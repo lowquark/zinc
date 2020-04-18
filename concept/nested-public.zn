@@ -1,0 +1,38 @@
+
+// This example demonstrates that public fields may be nested.
+
+struct vec2f {
+  public float x;
+  public float y;
+}
+
+struct rect2f {
+  public vec2f origin;
+  public vec2f size;
+}
+
+struct MyStruct {
+  rect2f rect;
+
+  access my_module;
+}
+
+module my_module {
+  MyStruct ms;
+
+  function test() {
+    // Ok - MyStruct has given this module access to its contents (rect), and this access extends to its public field
+    // origin, which means origin's public field x is also accessible!
+    ms.rect.origin.x = 0;
+  }
+}
+
+module some_module {
+  MyStruct ms;
+
+  function test() {
+    // Not ok - MyStruct has not given this module access to the contents of ms!
+    ms.rect.origin.x = 0;
+  }
+}
+

@@ -1,0 +1,41 @@
+
+struct MyStruct {
+  int a;
+  int b;
+  Child child;
+
+  access my_module;
+}
+
+struct MyStruct:Child {
+  float c;
+}
+
+module my_module {
+  int var_a;
+  int var_b;
+
+  function func1() {
+    int local_a;
+    int local_b;
+    int local_c;
+
+    local_a = 11;
+    local_b = 13;
+    local_c = -9;
+
+    if(local_c == -9) {
+      int local_d;
+      local_b = 2;
+    } else if(local_b == 13) {
+      int local_d;
+      local_c = 1000;
+    } else {
+      int local_d;
+      local_c = 1000000;
+    }
+
+    return (local_b - local_a == local_c)*57;
+  }
+}
+

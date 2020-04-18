@@ -1,0 +1,1337 @@
+#!/usr/bin/lua
+
+local pprint = require 'pprint'
+
+--------------------------------------------------------------------------------
+-- AST
+--------------------------------------------------------------------------------
+
+-- Expressions: (The list is long)
+local function ast_expr_negate(subexp)
+  return { type = 'negate', expression = subexp }
+end
+
+local function ast_expr_binnot(subexp)
+  return { type = 'binnot', expression = subexp }
+end
+
+local function ast_expr_lognot(subexp)
+  return { type = 'lognot', expression = subexp }
+end
+
+local function ast_expr_integer(value)
+  return { type = 'integer', value = value }
+end
+
+local function ast_expr_variable(name)
+  return { type = 'variable', name = name }
+end
+
+local function ast_expr_mul(subexp_a, subexp_b)
+  return { type = 'mul', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_div(subexp_a, subexp_b)
+  return { type = 'div', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_add(subexp_a, subexp_b)
+  return { type = 'add', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_sub(subexp_a, subexp_b)
+  return { type = 'sub', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_cmplt(subexp_a, subexp_b)
+  return { type = 'cmplt', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_cmpgt(subexp_a, subexp_b)
+  return { type = 'cmpgt', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_cmpleq(subexp_a, subexp_b)
+  return { type = 'cmpleq', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_cmpgeq(subexp_a, subexp_b)
+  return { type = 'cmpgeq', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_cmpeq(subexp_a, subexp_b)
+  return { type = 'cmpeq', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_cmpneq(subexp_a, subexp_b)
+  return { type = 'cmpneq', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_logand(subexp_a, subexp_b)
+  return { type = 'logand', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+local function ast_expr_logor(subexp_a, subexp_b)
+  return { type = 'logor', expression_a = subexp_a, expression_b = subexp_b }
+end
+
+-- Statements: local | block | if | return | assign
+local function ast_stmt_local_declaration(type_name_path, name)
+  return { type = 'local', type_name_path = type_name_path, name = name }
+end
+
+local function ast_stmt_block()
+  return { type = 'block' }
+end
+
+local function ast_stmt_if(expr, if_stmt, else_stmt)
+  return { type = 'if', expression = expr, if_statement = if_stmt, else_statement = else_stmt }
+end
+
+local function ast_stmt_return(expr)
+  return { type = 'return', expression = expr }
+end
+
+local function ast_stmt_assign(name, expr)
+  return { type = 'assign', name = name, expression = expr }
+end
+
+-- Struct declarations: field | access
+local function ast_struct_field_declaration(type_name_path, name)
+  return { type = 'field', type_name_path = type_name_path, name = name }
+end
+
+local function ast_struct_access_declaration(module_name_path)
+  return { type = 'access', name_path = module_name_path }
+end
+
+-- Module declarations: member | function
+local function ast_member_declaration(type_name_path, name)
+  return { type = 'member', type_name_path = type_name_path, name = name }
+end
+
+local function ast_function_declaration(name, block)
+  return { type = 'function', name = name, block = block }
+end
+
+-- File-scope declarations: struct | module
+local function ast_struct_declaration(name_path, declarations)
+  return { type = 'struct', name_path = name_path, declarations = declarations }
+end
+
+local function ast_module_declaration(name_path, declarations)
+  return { type = 'module', name_path = name_path, declarations = declarations }
+end
+
+local ast_dump_expr
+local ast_dump_stmt
+
+ast_dump_expr = function(exp, level)
+  local level = level or 0
+  local indent = string.rep('  ', level)
+  io.write(indent..string.upper(exp.type)..' ')
+  if exp.value then
+    io.write(tostring(exp.value)..'\n')
+  elseif exp.name then
+    io.write(exp.name..'\n')
+  else
+    io.write('\n')
+  end
+  if exp.expression then
+    ast_dump_expr(exp.expression, level+1)
+  elseif exp.expression_a and exp.expression_b then
+    ast_dump_expr(exp.expression_a, level+1)
+    ast_dump_expr(exp.expression_b, level+1)
+  end
+end
+
+ast_dump_stmt = function(stmt, level)
+  local level = level or 0
+  local indent = string.rep('  ', level)
+  if stmt.type == 'return' then
+    io.write(indent..'RETURN\n')
+    if stmt.expression then
+      ast_dump_expr(stmt.expression, level+1)
+    end
+  elseif stmt.type == 'assign' then
+    io.write(indent..'ASSIGN '..stmt.name..'\n')
+    ast_dump_expr(stmt.expression, level+1)
+  elseif stmt.type == 'local' then
+    io.write(indent..'LOCAL '..stmt.name..' : '..table.concat(stmt.type_name_path,':')..'\n')
+  elseif stmt.type == 'if' then
+    io.write(indent..'IF\n')
+    ast_dump_expr(stmt.expression, level+1)
+    io.write(indent..'THEN\n')
+    ast_dump_stmt(stmt.if_statement, level+1)
+    if stmt.else_statement then
+      io.write(indent..'ELSE\n')
+      ast_dump_stmt(stmt.else_statement, level+1)
+    end
+  elseif stmt.type == 'block' then
+    io.write(indent..'BLOCK\n')
+    for i,block_stmt in ipairs(stmt) do
+      ast_dump_stmt(block_stmt, level+1)
+    end
+  end
+end
+
+function ast_dump_module_decl(decl, level)
+  local level = level or 0
+  local indent = string.rep('  ', level)
+  if decl.type == 'function' then
+    io.write(indent..'FUNCTION '..decl.name..'\n')
+    ast_dump_stmt(decl.block, level + 1)
+  elseif decl.type == 'member' then
+    io.write(indent..'MEMBER '..decl.name..' : '..table.concat(decl.type_name_path,':')..'\n')
+  else
+    error('unknown decl declaration type `'..decl.type..'`')
+  end
+end
+
+function ast_dump_module(module, level)
+  local level = level or 0
+  local indent = string.rep('  ', level)
+  io.write(indent..'MODULE '..table.concat(module.name_path,':')..'\n')
+  for i,decl in ipairs(module.declarations) do
+    ast_dump_module_decl(decl, level + 1)
+  end
+end
+
+function ast_dump_struct_decl(decl, level)
+  local level = level or 0
+  local indent = string.rep('  ', level)
+  if decl.type == 'access' then
+    io.write(indent..'ACCESS '..table.concat(decl.name_path,':')..'\n')
+  elseif decl.type == 'field' then
+    io.write(indent..'FIELD '..decl.name..' : '..table.concat(decl.type_name_path,':')..'\n')
+  else
+    error('unknown struct declaration type `'..decl.type..'`')
+  end
+end
+
+function ast_dump_struct(struct, level)
+  local level = level or 0
+  local indent = string.rep('  ', level)
+  io.write(indent..'STRUCT '..table.concat(struct.name_path,':')..'\n')
+  for i,decl in ipairs(struct.declarations) do
+    ast_dump_struct_decl(decl, level + 1)
+  end
+end
+
+function ast_dump_file_decl(decl, level)
+  local level = level or 0
+  local indent = string.rep('  ', level)
+  if decl.type == 'struct' then
+    ast_dump_struct(decl, level)
+  elseif decl.type == 'module' then
+    ast_dump_module(decl, level)
+  else
+    error('unknown file-scope declaration type '..decl.type)
+  end
+end
+
+local function ast_dump(ast, level)
+  for i,decl in ipairs(ast) do
+    ast_dump_file_decl(decl, 0)
+  end
+end
+
+--------------------------------------------------------------------------------
+-- Lexer
+--------------------------------------------------------------------------------
+
+local function Lexer(file)
+  local L = { line = 1, col = 1 }
+
+  local function print_token(tok)
+    if tok.value then
+      io.write('type: `'..tok.type..'` value: `'..tok.value..'`\n')
+    else
+      io.write('type: `'..tok.type..'`\n')
+    end
+  end
+
+  local function yield(token)
+    L.next = token
+    -- Uncomment to print every token encountered
+    --print_token(token)
+    coroutine.yield(token)
+  end
+
+  local function readc()
+    L.col = L.col + 1
+    return file:read(1)
+  end
+
+  setmetatable(L, { __index = {
+    read = coroutine.wrap(function(self)
+      local c = readc()
+      while true do
+        if not c then
+          yield { type = 'eof' }
+        elseif string.match(c, '[%a_]') then
+          -- This is a name or reserved keyword
+          str = c
+          c = readc()
+          -- Keep matching, allowing decimals now
+          while string.match(c, '[%w_]') do
+            str = str .. c
+            c = readc()
+          end
+          if str == 'access' then
+            yield { type = 'access' }
+          elseif str == 'module' then
+            yield { type = 'module' }
+          elseif str == 'struct' then
+            yield { type = 'struct' }
+          elseif str == 'function' then
+            yield { type = 'function' }
+          elseif str == 'return' then
+            yield { type = 'return' }
+          elseif str == 'if' then
+            yield { type = 'if' }
+          elseif str == 'else' then
+            yield { type = 'else' }
+          else
+            yield { type = 'name', value = str }
+          end
+        elseif string.match(c, '%d') then
+          -- This is a number
+          str = c
+          c = readc()
+          -- Keep matching
+          while string.match(c, '[%d]') do
+            str = str .. c
+            c = readc()
+          end
+          yield { type = 'integer', value = str }
+        elseif c == '{' then
+          c = readc()
+          yield { type = 'lcurly' }
+        elseif c == '}' then
+          c = readc()
+          yield { type = 'rcurly' }
+        elseif c == '(' then
+          c = readc()
+          yield { type = 'lparen' }
+        elseif c == ')' then
+          c = readc()
+          yield { type = 'rparen' }
+        elseif c == ';' then
+          c = readc()
+          yield { type = 'semicolon' }
+        elseif c == ':' then
+          c = readc()
+          yield { type = 'colon' }
+        elseif c == '.' then
+          c = readc()
+          yield { type = 'dot' }
+        elseif c == '+' then
+          c = readc()
+          yield { type = 'plus' }
+        elseif c == '-' then
+          c = readc()
+          yield { type = 'minus' }
+        elseif c == '*' then
+          c = readc()
+          yield { type = 'asterisk' }
+        elseif c == '/' then
+          c = readc()
+          yield { type = 'fslash' }
+        elseif c == '~' then
+          c = readc()
+          yield { type = 'tilde' }
+        elseif c == '!' then
+          c = readc()
+          if c == '=' then
+            c = readc()
+            yield { type = 'cmpneq' }
+          else
+            yield { type = 'lognot' }
+          end
+        elseif c == '<' then
+          c = readc()
+          if c == '=' then
+            c = readc()
+            yield { type = 'cmpleq' }
+          else
+            yield { type = 'cmplt' }
+          end
+        elseif c == '>' then
+          c = readc()
+          if c == '=' then
+            c = readc()
+            yield { type = 'cmpgeq' }
+          else
+            yield { type = 'cmpgt' }
+          end
+        elseif c == '&' then
+          c = readc()
+          if c == '&' then
+            c = readc()
+            yield { type = 'logand' }
+          else
+            yield { type = 'binand' }
+          end
+        elseif c == '|' then
+          c = readc()
+          if c == '|' then
+            c = readc()
+            yield { type = 'logor' }
+          else
+            yield { type = 'binor' }
+          end
+        elseif c == '=' then
+          c = readc()
+          if c == '=' then
+            c = readc()
+            yield { type = 'cmpeq' }
+          else
+            yield { type = 'assign' }
+          end
+        elseif c == '\n' then
+          c = readc()
+          self.line = self.line + 1
+          self.col = 0
+        else
+          c = readc()
+        end
+      end
+      file:close()
+    end),
+    close = function(self)
+      file:close()
+    end
+  }})
+
+  L:read()
+
+  return L
+end
+
+--------------------------------------------------------------------------------
+-- Parser
+--------------------------------------------------------------------------------
+
+--[[
+
+Full parser grammar, in extended BNF:
+
+<name-path> := <name> { ':' <name> }
+
+<access-declaration> := 'access' <name-path> ';'
+<field-declaration> := <name-path> <name> ';'
+<struct-declaration> := 'struct' <name-path> '{' { <access-declaration> | <field-declaration> } '}'
+
+<expression0> := '(' <expression> ')'
+               | ( '-' | '~' | '!' ) <expression0> 
+               | <integer> 
+               | <name>
+<expression1> := <expression0> { ( '*' | '/' ) <expression0> }
+<expression2> := <expression1> { ( '+' | '-' ) <expression1> }
+<expression3> := <expression2> { ( '<' | '>' | '<=' | '>=' ) <expression2> }
+<expression4> := <expression3> { ( '==' | '!=' ) <expression3> }
+<expression5> := <expression4> { '&&' <expression4> }
+<expression6> := <expression5> { '||' <expression5> }
+<expression> := <expression6>
+
+<statement> := 'return' [ <expression> ] ';'
+             | <if-statement>
+             | <name> ( '=' <expression> ';' | { ':' <name> } <name> ';' )
+             | <expression> ';'
+
+<block> := '{' { <statement> } '}'
+
+<if-body> := 'if' '(' <expression> ')' <block>
+<else-body> := 'else' ( <if-body> [ <else-body> ] | <block> )
+<if-statement> := <if-body> [ <else-body> ]
+
+<function-declaration> := 'function' <name> '(' ')' <block>
+<member-declaration> := <name-path> <name> ';'
+<module-declaration> := 'module' <name-path> '{' { <function-declaration> | <member-declaration> } '}'
+
+]]
+
+local token_type_strings = {
+  [ 'eof' ]       = 'EOF',
+  [ 'name' ]      = 'name',
+  [ 'access' ]    = 'access keyword',
+  [ 'struct' ]    = 'struct keyword',
+  [ 'module' ]    = 'module keyword',
+  [ 'function' ]  = 'function keyword',
+  [ 'return' ]    = 'return keyword',
+  [ 'if' ]        = 'if keyword',
+  [ 'else' ]      = 'else keyword',
+  [ 'integer' ]   = 'integer constant',
+  [ 'lcurly' ]    = '`{`',
+  [ 'rcurly' ]    = '`}`',
+  [ 'lparen' ]    = '`(`',
+  [ 'rparen' ]    = '`)`',
+  [ 'integer' ]   = 'integer constant',
+  [ 'semicolon' ] = '`;`',
+  [ 'dot' ]       = '`.`',
+  [ 'plus' ]      = '`+`',
+  [ 'minus' ]     = '`-`',
+  [ 'asterisk' ]  = '`*`',
+  [ 'fslash' ]    = '`/`',
+  [ 'tilde' ]     = '`~`',
+  [ 'cmpneq' ]    = '`!=`',
+  [ 'lognot' ]    = '`!`',
+  [ 'cmpleq' ]    = '`<=`',
+  [ 'cmplt' ]     = '`<`',
+  [ 'cmpgeq' ]    = '`>=`',
+  [ 'cmpgt' ]     = '`>`',
+  [ 'logand' ]    = '`&&`',
+  [ 'binand' ]    = '`&`',
+  [ 'logor' ]     = '`||`',
+  [ 'binor' ]     = '`|`',
+  [ 'cmpeq' ]     = '`==`',
+  [ 'assign' ]    = '`=`',
+}
+
+-- Prints a parse error message and exits.
+-- The printed error message contains the line and column number of the current lexer position, and indicates which
+-- token was unexpected and which (given) tokens would have been valid.
+--     L : Lexer state
+--   ... : Valid token type strings
+local function parse_abort_expected(L, ...)
+  local expstr = ''
+  local n = select('#', ...)
+  for i=1,n do
+    local v = select(i, ...)
+    expstr = expstr..(token_type_strings[v] or v)
+    if i == n - 1 then
+      expstr = expstr..' or '
+    elseif i ~= n then
+      expstr = expstr..', '
+    end
+  end
+  actstr = token_type_strings[L.next.type]
+  io.write('Error on line '..L.line..', col '..L.col..': Expected '..expstr..'; got '..actstr..'\n')
+  io.write(debug.traceback())
+  os.exit(3)
+end
+
+-- Parses a single token of the given type, does not return a value
+local function parse_token(L, type)
+  if L.next.type == type then
+    L:read()
+  else
+    parse_abort_expected(L, type)
+  end
+end
+
+-- Parses a <name> token
+-- Returns the name as a string
+local function parse_name(L)
+  if L.next.type == 'name' then
+    local name = L.next.value
+    L:read()
+    return name
+  else
+    parse_abort_expected(L, 'name')
+  end
+end
+
+-- Parses the remainder of a <name-path>, where the first name has already been read
+-- Does this count as backtracking? Maybe.
+local function parse_name_path_lead1(L, leading_name)
+  local name_path = {}
+  if leading_name == 'global' then
+    name_path.absolute = true
+  else
+    name_path.absolute = false
+    table.insert(name_path, leading_name)
+  end
+  while L.next.type == 'colon' do
+    L:read()
+    local name = parse_name(L)
+    table.insert(name_path, name)
+  end
+  return name_path
+end
+
+-- Parses a <name-path>
+-- Returns the AST object for a name path
+local function parse_name_path(L)
+  return parse_name_path_lead1(L, parse_name(L))
+end
+
+-- Parses a <struct-access-declaration>
+-- Returns the AST object for a struct access declaration
+local function parse_struct_access_declaration(L)
+  parse_token(L, 'access')
+  local name_path = parse_name_path(L)
+  parse_token(L, 'semicolon')
+  return ast_struct_access_declaration(name_path)
+end
+
+-- Parses a <struct-field-declaration>
+-- Returns the AST object for a struct field declaration
+local function parse_struct_field_declaration(L)
+  local type_name_path = parse_name_path(L)
+  local name = parse_name(L)
+  parse_token(L, 'semicolon')
+  return ast_struct_field_declaration(type_name_path, name)
+end
+
+-- Parses a <struct-declaration>
+-- Returns the AST object for a struct declaration
+local function parse_struct_declaration(L)
+  local name_path 
+  local declarations = {}
+  -- Read struct header
+  parse_token(L, 'struct')
+  name_path = parse_name_path(L)
+  parse_token(L, 'lcurly')
+  -- Read declarations until an rcurly
+  while L.next.type ~= 'rcurly' do
+    if L.next.type == 'access' then
+      table.insert(declarations, parse_struct_access_declaration(L));
+    elseif L.next.type == 'name' then
+      table.insert(declarations, parse_struct_field_declaration(L));
+    else
+      parse_abort_expected(L, 'field/access declaration')
+    end
+  end
+  -- Read last rcurly
+  L:read()
+  return ast_struct_declaration(name_path, declarations)
+end
+
+-- Parses an <expression0>
+-- Returns the AST object for an expression
+function parse_expression_0(L)
+  if L.next.type == 'lparen' then
+    L:read()
+    local subexp = parse_expression(L)
+    parse_token(L, 'rparen')
+    return subexp
+  elseif L.next.type == 'minus' then
+    L:read()
+    local subexp = parse_expression_0(L)
+    return ast_expr_negate(subexp)
+  elseif L.next.type == 'tilde' then
+    L:read()
+    local subexp = parse_expression_0(L)
+    return ast_expr_binnot(subexp)
+  elseif L.next.type == 'lognot' then
+    L:read()
+    local subexp = parse_expression_0(L)
+    return ast_expr_lognot(subexp)
+  elseif L.next.type == 'integer' then
+    local value = L.next.value
+    L:read()
+    return ast_expr_integer(value)
+  elseif L.next.type == 'name' then
+    local name = L.next.value
+    L:read()
+    return ast_expr_variable(name)
+  else
+    parse_abort_expected(L, 'expression')
+  end
+end
+
+-- Parses an <expression1>
+-- Returns the AST object for an expression
+function parse_expression_1(L)
+  -- Read first operator argument (may be the only one)
+  local subexp = parse_expression_0(L)
+  while L.next.type == 'asterisk' or L.next.type == 'fslash' do
+    -- Read operator
+    local optype = L.next.type
+    L:read()
+    -- Read second operator argument
+    local subexp2 = parse_expression_0(L)
+    if optype == 'asterisk' then
+      subexp = ast_expr_mul(subexp, subexp2)
+    elseif optype == 'fslash' then
+      subexp = ast_expr_div(subexp, subexp2)
+    end
+  end
+  return subexp
+end
+
+-- Parses an <expression2>
+-- Returns the AST object for an expression
+function parse_expression_2(L)
+  -- Read first operator argument (may be the only one)
+  local subexp = parse_expression_1(L)
+  while L.next.type == 'plus' or L.next.type == 'minus' do
+    -- Read operator
+    local optype = L.next.type
+    L:read()
+    -- Read second operator argument
+    local subexp2 = parse_expression_1(L)
+    if optype == 'plus' then
+      subexp = ast_expr_add(subexp, subexp2)
+    elseif optype == 'minus' then
+      subexp = ast_expr_sub(subexp, subexp2)
+    end
+  end
+  return subexp
+end
+
+-- Parses an <expression3>
+-- Returns the AST object for an expression
+function parse_expression_3(L)
+  -- Read first operator argument (may be the only one)
+  local subexp = parse_expression_2(L)
+  while L.next.type == 'cmplt' or L.next.type == 'cmpgt' or L.next.type == 'cmpleq' or L.next.type == 'cmpgeq' do
+    -- Read operator
+    local optype = L.next.type
+    L:read()
+    -- Read second operator argument
+    local subexp2 = parse_expression_2(L)
+    if optype == 'cmplt' then
+      subexp = ast_expr_cmplt(subexp, subexp2)
+    elseif optype == 'cmpgt' then
+      subexp = ast_expr_cmpgt(subexp, subexp2)
+    elseif optype == 'cmpleq' then
+      subexp = ast_expr_cmpleq(subexp, subexp2)
+    elseif optype == 'cmpgeq' then
+      subexp = ast_expr_cmpgeq(subexp, subexp2)
+    end
+  end
+  return subexp
+end
+
+-- Parses an <expression4>
+-- Returns the AST object for an expression
+function parse_expression_4(L)
+  -- Read first operator argument (may be the only one)
+  local subexp = parse_expression_3(L)
+  while L.next.type == 'cmpeq' or L.next.type == 'cmpneq' do
+    -- Read operator
+    local optype = L.next.type
+    L:read()
+    -- Read second operator argument
+    local subexp2 = parse_expression_3(L)
+    if optype == 'cmpeq' then
+      subexp = ast_expr_cmpeq(subexp, subexp2)
+    elseif optype == 'cmpneq' then
+      subexp = ast_expr_cmpneq(subexp, subexp2)
+    end
+  end
+  return subexp
+end
+
+-- Parses an <expression5>
+-- Returns the AST object for an expression
+function parse_expression_5(L)
+  -- Read first operator argument (may be the only one)
+  local subexp = parse_expression_4(L)
+  while L.next.type == 'logand' do
+    -- Read operator
+    local optype = L.next.type
+    L:read()
+    -- Read second operator argument
+    local subexp2 = parse_expression_4(L)
+    if optype == 'logand' then
+      subexp = ast_expr_logand(subexp, subexp2)
+    end
+  end
+  return subexp
+end
+
+-- Parses an <expression6>
+-- Returns the AST object for an expression
+function parse_expression_6(L)
+  -- Read first operator argument (may be the only one)
+  local subexp = parse_expression_5(L)
+  while L.next.type == 'logor' do
+    -- Read operator
+    local optype = L.next.type
+    L:read()
+    -- Read second operator argument
+    local subexp2 = parse_expression_5(L)
+    if optype == 'logor' then
+      subexp = ast_expr_logor(subexp, subexp2)
+    end
+  end
+  return subexp
+end
+
+-- Parses an <expression>
+parse_expression = parse_expression_6
+
+local parse_statement
+local parse_if_statement
+
+-- Parses a <block>
+-- Returns the AST object for a block
+local function parse_block(L)
+  local block = ast_stmt_block()
+  parse_token(L, 'lcurly')
+  while L.next.type ~= 'rcurly' do
+    table.insert(block, parse_statement(L))
+  end
+  parse_token(L, 'rcurly')
+  return block
+end
+
+-- Parses an <if-body>
+-- Returns the expression AST object and the block AST object separately
+local function parse_if_body(L)
+  local expr
+  local block
+  parse_token(L, 'if')
+  parse_token(L, 'lparen')
+  expr = parse_expression(L)
+  parse_token(L, 'rparen')
+  block = parse_block(L)
+  return expr, block
+end
+
+-- Parses an <else-body>
+-- Returns the AST object for an if statement
+local function parse_else_body(L)
+  parse_token(L, 'else')
+  if L.next.type == 'if' then
+    return parse_if_statement(L)
+  elseif L.next.type == 'lcurly' then
+    return parse_block(L)
+  else
+    -- Curly braces are not optional!
+    parse_abort_expected(L, 'if', 'lcurly')
+  end
+end
+
+-- Parses an <if-statement>
+-- Returns the AST object for an if statement
+parse_if_statement = function(L)
+  local expr, if_stmt = parse_if_body(L)
+  local else_stmt
+  if L.next.type == 'else' then
+    else_stmt = parse_else_body(L)
+  end
+  return ast_stmt_if(expr, if_stmt, else_stmt)
+end
+
+-- Parses a <statement>
+-- Returns the AST object for a statement
+parse_statement = function(L)
+  if L.next.type == 'return' then
+    -- Return statements are simple; optionally return an expression
+    L:read()
+    if L.next.type == 'semicolon' then
+      L:read()
+      return ast_stmt_return(nil)
+    else
+      local expr = parse_expression(L)
+      parse_token(L, 'semicolon')
+      return ast_stmt_return(expr)
+    end
+  elseif L.next.type == 'if' then
+    return parse_if_statement(L)
+  elseif L.next.type == 'lcurly' then
+    return parse_block(L)
+  elseif L.next.type == 'name' then
+    -- Reading a name could mean a variable declaration, or a variable assignment
+    local first_name = L.next.value
+    L:read()
+    if L.next.type == 'assign' then
+      L:read()
+      -- Assigning first_name to expr
+      local expr = parse_expression(L)
+      parse_token(L, 'semicolon')
+      -- That's a variable assignment
+      return ast_stmt_assign(first_name, expr)
+    elseif L.next.type == 'colon' or L.next.type == 'name' then
+      -- Read variable type (first name already known)
+      local type_name_path = parse_name_path_lead1(L, first_name)
+      -- Read variable name
+      local name = parse_name(L)
+      parse_token(L, 'semicolon')
+      -- That's the declaration, me boy
+      return ast_stmt_local_declaration(type_name_path, name)
+    else
+      parse_abort_expected(L, 'assign', 'colon', 'name')
+    end
+  else
+    parse_abort_expected(L, 'statement')
+  end
+end
+
+-- Parses a <function-declaration>
+-- Returns the AST object for a function declaration
+local function parse_function_declaration(L)
+  parse_token(L, 'function');
+  local name = parse_name(L)
+  parse_token(L, 'lparen')
+  parse_token(L, 'rparen')
+  local block = parse_block(L)
+  return ast_function_declaration(name, block)
+end
+
+-- Parses a <member-declaration>
+-- Returns the AST object for a member declaration
+local function parse_member_declaration(L)
+  local type_name_path = parse_name_path(L)
+  local name = parse_name(L)
+  parse_token(L, 'semicolon')
+  return ast_member_declaration(type_name_path, name)
+end
+
+-- Parses a <module-declaration>
+-- Returns the AST object for a module declaration
+local function parse_module(L)
+  local name_path 
+  local declarations = {}
+  -- Read module header
+  parse_token(L, 'module')
+  name_path = parse_name_path(L)
+  parse_token(L, 'lcurly')
+  -- Read declarations until an rcurly
+  while L.next.type ~= 'rcurly' do
+    if L.next.type == 'function' then
+      table.insert(declarations, parse_function_declaration(L))
+    elseif L.next.type == 'name' then
+      table.insert(declarations, parse_member_declaration(L))
+    else
+      parse_abort_expected(L, 'member/function declaration');
+    end
+  end
+  -- Read last rcurly
+  L:read()
+  return { type = 'module', name_path = name_path, declarations = declarations }
+end
+
+-- Parses a file
+-- Returns the AST object for a translation unit
+local function parse_file(file_in)
+  local L = Lexer(file_in)
+
+  local file_declarations = {}
+
+  while L.next.type ~= 'eof' do
+    if L.next.type == 'struct' then
+      table.insert(file_declarations, parse_struct_declaration(L))
+    elseif L.next.type == 'module' then
+      table.insert(file_declarations, parse_module(L))
+    else
+      parse_abort_expected(L, 'struct/module declaration');
+    end
+  end
+
+  L:close()
+
+  return file_declarations
+end
+
+--------------------------------------------------------------------------------
+-- Code Generation
+--------------------------------------------------------------------------------
+
+local function symbol_name(module_path, name)
+  return table.concat(module_path, '$')..'$'..name
+end
+
+local function new_label(ctx)
+  local a = ctx.label_id
+  ctx.label_id = a + 1
+  return '_l'..a
+end
+
+local function emit(ctx, instr)
+  ctx.outfile:write('\t'..instr..'\n')
+end
+
+local function emit_noindent(ctx, instr)
+  ctx.outfile:write(instr..'\n')
+end
+
+local function emit_label(ctx, label)
+  ctx.outfile:write(label..':\n')
+end
+
+local function emit_line(ctx)
+  ctx.outfile:write('\n')
+end
+
+-- The (e)mit (e)xpression (t)able
+local eet = {}
+
+local emit_expression
+
+function eet.integer(ctx, expr)
+  emit(ctx, 'mov $'..expr.value..', %rax')
+end
+
+function eet.negate(ctx, expr)
+  emit_expression(ctx, expr.expression)
+  emit(ctx, 'neg %rax')
+end
+
+function eet.binnot(ctx, expr)
+  emit_expression(ctx, expr.expression)
+  emit(ctx, 'not %rax')
+end
+
+function eet.lognot(ctx, expr)
+  emit_expression(ctx, expr.expression)
+  emit(ctx, 'cmp $0, %rax')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'sete %al')
+end
+
+function eet.add(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'addq %rcx, %rax')
+end
+
+function eet.sub(ctx, expr)
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'subq %rcx, %rax')
+end
+
+function eet.mul(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'imul %rcx, %rax')
+end
+
+function eet.div(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'mov %rax, %rcx')
+  emit(ctx, 'pop %rax')
+  emit(ctx, 'cqto')
+  emit(ctx, 'idivq %rcx')
+end
+
+function eet.cmpeq(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'cmp %rax, %rcx')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'sete %al')
+end
+
+function eet.cmpneq(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'cmp %rax, %rcx')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'setne %al')
+end
+
+function eet.cmplt(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'cmp %rax, %rcx')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'setl %al')
+end
+
+function eet.cmpgt(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'cmp %rax, %rcx')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'setg %al')
+end
+
+function eet.cmpleq(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'cmp %rax, %rcx')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'setle %al')
+end
+
+function eet.cmpgeq(ctx, expr)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'push %rax')
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'pop %rcx')
+  emit(ctx, 'cmp %rax, %rcx')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'setge %al')
+end
+
+function eet.logand(ctx, expr)
+  local lab1 = new_label(ctx)
+  local lab2 = new_label(ctx)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'cmp $0, %rax')
+  emit(ctx, 'jne '..lab1)
+  emit(ctx, 'jmp '..lab2)
+  emit_label(ctx, lab1)
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'cmp $0, %rax')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'setne %al')
+  emit_label(ctx, lab2)
+end
+
+function eet.logor(ctx, expr)
+  local lab1 = new_label(ctx)
+  local lab2 = new_label(ctx)
+  emit_expression(ctx, expr.expression_a)
+  emit(ctx, 'cmp $0, %rax')
+  emit(ctx, 'je '..lab1..'')
+  emit(ctx, 'mov $1, %rax')
+  emit(ctx, 'jmp '..lab2..'')
+  emit_label(ctx, lab1)
+  emit_expression(ctx, expr.expression_b)
+  emit(ctx, 'cmp $0, %rax')
+  emit(ctx, 'mov $0, %rax')
+  emit(ctx, 'setne %al')
+  emit_label(ctx, lab2)
+end
+
+function eet.variable(ctx, expr)
+  local scope = ctx.scope_stack[#ctx.scope_stack]
+  local index = scope[expr.name]
+  if index then
+    emit(ctx, 'mov '..index..'(%rbp), %rax')
+  else
+    error('`'..expr.name..'` was not found in this scope.')
+  end
+end
+
+emit_expression = function(ctx, expr)
+  local h = eet[expr.type]
+  if h then
+    h(ctx, expr)
+  else
+    io.write('Unknown expression type `'..expr.type..'`\n')
+    os.exit(4)
+  end
+end
+
+local function emit_prologue(ctx)
+  emit(ctx, 'push %rbp')
+  emit(ctx, 'mov %rsp, %rbp')
+end
+
+local function emit_epilogue(ctx)
+  emit(ctx, 'mov %rbp, %rsp')
+  emit(ctx, 'pop %rbp')
+  emit(ctx, 'ret')
+end
+
+local emit_statement
+
+local function emit_if_statement(ctx, stmt)
+  if stmt.else_statement then
+    local lab1 = new_label(ctx)
+    local lab2 = new_label(ctx)
+    emit_expression(ctx, stmt.expression)
+    emit(ctx, 'cmp $0, %rax')
+    emit(ctx, 'je '..lab1..'')
+    emit(ctx, '/* if block */')
+    emit_statement(ctx, stmt.if_statement)
+    emit(ctx, 'jmp '..lab2..'')
+    emit_label(ctx, lab1)
+    emit(ctx, '/* else block */')
+    emit_statement(ctx, stmt.else_statement)
+    emit_label(ctx, lab2)
+  else
+    local lab1 = new_label(ctx)
+    emit_expression(ctx, stmt.expression)
+    emit(ctx, 'cmp $0, %rax')
+    emit(ctx, 'je '..lab1..'')
+    emit(ctx, '/* if block */')
+    emit_statement(ctx, stmt.if_statement)
+    emit_label(ctx, lab1)
+  end
+end
+
+local function dup_scope(scope)
+  local new_scope = { }
+  -- Inerit access to all of this scope's local variables
+  if scope then
+    for k,v in pairs(scope) do
+      new_scope[k] = scope[k]
+    end
+  end
+  return new_scope
+end
+
+local function emit_block_statement(ctx, stmt)
+  local stack = ctx.scope_stack
+  -- Save stack index at new scope entry
+  local entry_stack_index = ctx.stack_index
+  -- Push a duplicate scope onto the scope stack
+  table.insert(stack, dup_scope(stack[#stack]))
+  -- Emit statements in this block
+  for i,stmt in ipairs(stmt) do
+    emit_statement(ctx, stmt)
+  end
+  -- Revert stack index
+  ctx.stack_index = entry_stack_index
+  -- Pop child scope
+  table.remove(stack)
+end
+
+emit_statement = function(ctx, stmt)
+  if stmt.type == 'return' then
+    if stmt.expression then
+      emit_expression(ctx, stmt.expression)
+      emit_epilogue(ctx)
+    else
+      emit(ctx, 'mov $0, %rax')
+      emit_epilogue(ctx)
+    end
+  elseif stmt.type == 'assign' then
+    local stack = ctx.scope_stack
+    local scope = stack[#stack]
+    local index = scope[stmt.name]
+    if index then
+      emit_expression(ctx, stmt.expression)
+      emit(ctx, 'mov %rax, '..index..'(%rbp)')
+    else
+      error('`'..stmt.name..'` was not found in this scope.')
+    end
+  elseif stmt.type == 'local' then
+    local stack = ctx.scope_stack
+    local scope = stack[#stack]
+    local index = scope[stmt.name]
+    if index then
+      error('`'..stmt.name..'` has already been declared in this scope.');
+    end
+    scope[stmt.name] = ctx.stack_index
+    ctx.stack_index = ctx.stack_index - 8
+    emit(ctx, 'mov $0, %rax')
+    emit(ctx, 'push %rax')
+  elseif stmt.type == 'if' then
+    emit_if_statement(ctx, stmt)
+  elseif stmt.type == 'block' then
+    emit_block_statement(ctx, stmt)
+  else
+    io.write('Unknown statement type `'..stmt.type..'`\n')
+    os.exit(4)
+  end
+end
+
+local function emit_function(ctx, module, func)
+  symbol = symbol_name(module.name_path, func.name)
+  -- Write header
+  emit(ctx, '.globl '..symbol)
+  emit(ctx, '.type '..symbol..', @function')
+  emit_label(ctx, symbol)
+  emit_prologue(ctx)
+  -- Write statements (block)
+  ctx.stack_index = -8
+  emit_statement(ctx, func.block)
+  -- Write footer
+  emit(ctx, 'mov $0, %rax')
+  emit_epilogue(ctx)
+  emit_noindent(ctx, '')
+end
+
+local function compile(ast, outfile)
+  local ctx = {
+    label_id = 0,
+    stack_index = -8,
+    scope_stack = { },
+    outfile = outfile,
+  }
+
+  emit(ctx, '.text')
+
+  for i,v in ipairs(ast) do
+    if v.type == 'module' then
+      local module = v
+      for i,v in ipairs(v.declarations) do
+        if v.type == 'member' then
+          local var = v
+          emit(ctx, '.comm '..symbol_name(module.name_path, var.name)..',8,8')
+        end
+      end
+    end
+  end
+
+  emit_line(ctx)
+
+  for i,fdecl in ipairs(ast) do
+    if fdecl.type == 'module' then
+      local module = fdecl
+      for i,mdecl in ipairs(module.declarations) do
+        if mdecl.type == 'function' then
+          local func = mdecl
+          emit_function(ctx, module, func)
+        end
+      end
+    end
+  end
+
+  emit(ctx, '.globl main')
+  emit(ctx, '.type main, @function')
+  emit_label(ctx, 'main')
+  emit(ctx, 'call my_module$func1')
+  emit(ctx, 'ret')
+  emit_line(ctx)
+end
+
+--------------------------------------------------------------------------------
+
+io.output(io.stderr)
+
+local function exit_usage()
+  io.write('Usage: '..arg[0]..' <infile> [outfile]\n')
+  os.exit(1)
+end
+
+local function exit_error(errstr)
+  io.write(arg[0]..': Error: '..errstr..'\n')
+  os.exit(1)
+end
+
+local filename_in = arg[1]
+if not filename_in then exit_usage() end
+
+local filename_out = arg[2]
+
+if filename_in == filename_out then
+  exit_error('infile must not match outfile')
+end
+
+local file_in = io.open(filename_in)
+if not file_in then
+  io.write('Failed to open `'..filename_in..'` for reading\n')
+  os.exit(2)
+end
+
+local file_out
+if filename_out then
+  file_out = io.open(filename_out, "w")
+  if not file_out then
+    io.write('Failed to open `'..filename_out..'` for writing\n')
+    os.exit(2)
+  end
+else
+  file_out = io.stdout
+end
+
+--------------------------------------------------------------------------------
+
+local ast = parse_file(file_in)
+
+io.write('--------------------------------------------------------------------------------\n')
+ast_dump(ast)
+io.write('--------------------------------------------------------------------------------\n')
+
+compile(ast, file_out)
+

@@ -1,0 +1,109 @@
+
+// High level importing.
+import util
+import math
+
+// A glorified C-style struct.
+struct UI {
+  int32 player_input_dx;
+  float32 camera_pos_x;
+
+  // C#-style getters/setters, of course.
+  int32 camera_pos_x_pixels {
+    get {
+      // This method has readonly access to struct UI, but none of its children.
+      return math:floor(camera_pos_x * 32.0f);
+    }
+    set {
+      // This method has access to struct UI, but none of its children.
+      camera_pos_x = value / 32.0f;
+    }
+  };
+
+  // No code is allowed to modify the contents of structs without explicit permission. Here, the ui_update module is
+  // given access, and any of its child modules will be given the same access as well.
+  access client_main:ui_update;
+}
+
+struct Game {
+  Mob player_mob;
+  // Like Python, data structures are built into the language, not provided via library.
+  array<Entity> entities;
+
+  access client_main:game_update;
+}
+
+// A "child struct" of Game.
+// The contents of child structs (here: Mob, Object, and Entity) are accessible if the contents of their parent struct
+// are accessible.
+struct Game:Mob {
+  float32 x;
+  string name;
+}
+
+struct Game:Object {
+  float32 x;
+}
+
+// A variant is like C's union, but tagged with a type id.
+variant Game:Entity { Mob, Object }
+
+struct ClientConfig {
+  int32 some;
+  int32 config;
+  int32 stuff;
+
+  access client_main;
+}
+
+// A named unit of code.
+module client_main {
+  // Module variable declarations are like C's static, file-scope declarations, and are accessible to all child modules.
+  // They are not accessible to any other modules. Note that any type may be declared anywhere, regardless of who may
+  // access its contents.
+  ClientConfig config;
+  Game game;
+  UI ui;
+
+  function main(array<string> args) -> int32 {
+    config.some = 63;
+    config.config = 64;
+    config.stuff = 65;
+
+    while(1) {
+      // Here, we're not allowed to touch the contents of game or ui, but our child modules are!
+      game_update:step();
+      ui_update:step();
+    }
+  }
+}
+
+// A child module of client_main.
+module client_main:game_update {
+  function step_mob(Mob mob) {
+  }
+
+  function step_object(Object obj) {
+  }
+
+  function step() {
+    game.player_mob.x += ui.player_input_dx;
+
+    for(entity in game.entities) {
+      // In order to access a variant type, one must provide a case for each possible type.
+      // The visit statement is essentially a switch statement on the variant's type, with an appropriate cast.
+      visit(entity) {
+        Mob { step_mob(entity); }
+        Object { step_object(entity); }
+      }
+    }
+  }
+}
+
+// Another child module of client_main.
+module client_main:ui_update {
+  function step() {
+    ui.camera_pos_x = game.player_mob.x;
+  }
+}
+

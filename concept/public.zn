@@ -1,0 +1,36 @@
+
+// A public field is accessible if its containing struct is accessible.
+// Think: "My fields are your fields."
+
+struct vec2f {
+  public float x;
+  public float y;
+}
+
+struct MyStruct {
+  vec2f vec;
+
+  access my_module;
+}
+
+module my_module {
+  MyStruct my_struct;
+
+  function test() {
+    // Ok - vec2f:x is public, and we have access to the contents of my_struct here.
+    my_struct.vec.x = 5;
+  }
+}
+
+module some_module {
+  MyStruct my_struct;
+  vec2f other_vec;
+
+  function test() {
+    // Not ok - vec2f:x might be public, but MyStruct has not given this module access to its contents!
+    my_struct.vec.x = 5;
+    // Ok - vec2f:x is public, and we have access to other_vec because it is a part of this module.
+    other_vec.x = 5;
+  }
+}
+

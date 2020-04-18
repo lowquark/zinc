@@ -1,0 +1,41 @@
+
+// Depending on how modules and structs are named, they will inherit the access priviledges of their parents.
+
+// If module A has access to the contents of struct B, then module A has access to the contents of all child structs of
+// B. Similarly, all child modules of A have access to the contents of struct B and all of its child structs.
+
+// A child struct of MyStruct
+struct MyStruct:Child {
+  float c;
+}
+
+// Not a child struct of MyStruct
+struct NotChild {
+  float c;
+}
+
+struct MyStruct {
+  int a;
+  int b;
+  Child child;
+  NotChild not_child;
+
+  access my_module;
+}
+
+module my_module:submodule {
+  function test(access MyStruct ms) {
+    // Ok - my_module has access to MyStruct, and therefore my_module:submodule has access to MyStruct:Child.
+    ms.child.c = ms.a;
+    // Not ok - not_child is a field of MyStruct, but NotChild has not given access to any module.
+    ms.not_child.c = ms.a;
+  }
+}
+
+module my_module {
+  function test() {
+    MyStruct ms;
+    submodule:test(ms);
+  }
+}
+
