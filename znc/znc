@@ -1174,14 +1174,19 @@ local function emit_block_statement(ctx, stmt)
   -- Save stack index at new scope entry
   local entry_stack_index = ctx.stack_index
   -- Push a duplicate scope onto the scope stack
-  table.insert(stack, dup_scope(stack[#stack]))
+  local scope = dup_scope(stack[#stack])
+  table.insert(stack, scope)
   -- Emit statements in this block
   for i,stmt in ipairs(stmt) do
     emit_statement(ctx, stmt)
   end
-  -- Revert stack index
-  ctx.stack_index = entry_stack_index
-  -- Pop child scope
+  -- Pop pushed variables
+  if ctx.stack_index < entry_stack_index then
+    emit(ctx, 'add $'..(entry_stack_index - ctx.stack_index)..', %rsp')
+    -- Revert stack index
+    ctx.stack_index = entry_stack_index
+  end
+  pprint(scope)
   table.remove(stack)
 end
 
