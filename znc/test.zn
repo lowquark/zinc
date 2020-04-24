@@ -32,12 +32,15 @@ module my_module {
 
     if(local_c == -9) {
       int local_d;
-      local_b = 2;
+      local_a = 0;
+      local_b = 1;
+      local_c = 2;
+      local_d = 3;
     } else if(local_b == 13) {
       int local_d;
       local_c = 1000;
+      local_d = 3;
     } else {
-      int local_d;
       local_c = 1000000;
     }
 

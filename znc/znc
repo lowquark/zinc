@@ -1013,11 +1013,14 @@ local function parse_file(file_in)
 end
 
 --------------------------------------------------------------------------------
--- Compilation
+-- Intermediate Representation
 --------------------------------------------------------------------------------
 
-local function ir_local(name)
-  return { type = 'local', name = name }
+local function ir_salloc(size)
+  return { type = 'salloc', size = size }
+end
+local function ir_sfree(size)
+  return { type = 'sfree', size = size }
 end
 
 local function ir_mov(reg_z, reg_x)
@@ -1123,16 +1126,42 @@ local function ir_jgeq(label_name, reg_x, reg_y)
   return { type = 'jgeq', label_name = label_name, register_x = reg_x, register_y = reg_y }
 end
 
+--------------------------------------------------------------------------------
+-- Compilation
+--------------------------------------------------------------------------------
+
+local function dupscope(scope)
+  local new_scope = { }
+  -- Inerit access to all of this scope's local variables
+  for k,v in pairs(scope) do
+    new_scope[k] = scope[k]
+  end
+  return new_scope
+end
+
 local function pushtemp(ctx)
   local idx = ctx.temp_index
   ctx.temp_index = ctx.temp_index + 1
+  if ctx.temp_index > ctx.temp_index_max then
+    ctx.temp_index_max = ctx.temp_index
+  end
   return 'r'..idx
 end
 local function poptemp(ctx)
   ctx.temp_index = ctx.temp_index - 1
 end
-local function cleartemp(ctx)
+local function cleartemps(ctx)
   ctx.temp_index = 0
+end
+
+local function stackreg(ctx, name)
+  local abs_index = ctx.local_scope[name]
+  if abs_index then
+    local rel_index = ctx.local_scope[name] - ctx.local_index_block
+    return 's['..rel_index..']'
+  else
+    error('`'..name..'` was not found in this scope.')
+  end
 end
 
 local function newlabel(ctx)
@@ -1295,7 +1324,7 @@ end
 
 function ir_eet.variable(ctx, expr)
   local reg = pushtemp(ctx)
-  ir_emit(ctx, ir_mov(reg, expr.name))
+  ir_emit(ctx, ir_mov(reg, stackreg(ctx, expr.name)))
   return reg
 end
 
@@ -1335,9 +1364,10 @@ ir_est['if'] = function(ctx, ast_stmt)
 end
 
 ir_est['local'] = function(ctx, ast_stmt)
-  ctx.locals[ast_stmt.name] = ctx.stack_index
-  ctx.stack_index = ctx.stack_index + 1
-  ir_emit(ctx, ir_local(ast_stmt.name))
+  io.write('local `'..ast_stmt.name..'` is at index '..ctx.local_index..'\n')
+  io.write('its block is at index '..ctx.local_index_block..'\n')
+  ctx.local_scope[ast_stmt.name] = ctx.local_index
+  ctx.local_index = ctx.local_index + 1
 end
 
 ir_est['return'] = function(ctx, ast_stmt)
@@ -1353,21 +1383,55 @@ end
 
 function ir_est.assign(ctx, ast_stmt)
   local reg = ir_emit_expression(ctx, ast_stmt.expression)
-  ir_emit(ctx, ir_mov(ast_stmt.name, reg))
+  ir_emit(ctx, ir_mov(stackreg(ctx, ast_stmt.name), reg))
+end
+
+function ir_est.block(ctx, ast_stmt)
+  -- Calculate total stack space required by this block
+  local stack_size = 0
+  for i,ast_substmt in ipairs(ast_stmt) do
+    if ast_substmt.type == 'local' then
+      stack_size = stack_size + 1
+    end
+  end
+
+  io.write('this block will use '..stack_size..' words of stack space\n')
+
+  local local_index_block_prev
+  local local_index_prev
+  local local_scope_prev
+
+  if stack_size ~= 0 then
+    ir_emit(ctx, ir_salloc(stack_size))
+
+    local_index_block_prev = ctx.local_index_block
+    local_index_prev = ctx.local_index
+    local_scope_prev = ctx.local_scope
+
+    ctx.local_index_block = ctx.local_index
+    ctx.local_scope = dupscope(ctx.local_scope)
+  end
+
+  for i,ast_substmt in ipairs(ast_stmt) do
+    ir_emit_statement(ctx, ast_substmt)
+  end
+
+  if stack_size ~= 0 then
+    ir_emit(ctx, ir_sfree(stack_size))
+
+    ctx.local_index_block = local_index_block_prev
+    ctx.local_index = local_index_prev
+    ctx.local_scope = local_scope_prev
+  end
 end
 
 function ir_est.call(ctx, ast_stmt)
   -- THE BIG TODO
 end
 
-function ir_est.block(ctx, ast_stmt)
-  for i,ast_substmt in ipairs(ast_stmt) do
-    ir_emit_statement(ctx, ast_substmt)
-  end
-end
-
 ir_emit_statement = function(ctx, ast_stmt)
-  cleartemp(ctx)
+  -- All temporary registers are free game at the beginning of a statement
+  cleartemps(ctx)
   local h = ir_est[ast_stmt.type]
   if h then
     h(ctx, ast_stmt)
@@ -1382,10 +1446,14 @@ local function ir_subroutine(ast_module_name_path, ast_func)
   local statements = { }
 
   ctx = {
-    locals = { },
+    local_scope = { },
     statements = statements,
-    stack_index = 0,
+    local_index_block = 0,
+    local_index = 0,
+    -- Counter / high water mark for the temp stack
     temp_index = 0,
+    temp_index_max = 0,
+    -- Counter for unique label generation
     label_index = 0,
   }
 
@@ -1397,6 +1465,9 @@ local function ir_subroutine(ast_module_name_path, ast_func)
     arguments = arguments,
     returns = returns,
     statements = statements,
+    meta = {
+      temp_count = ctx.temp_index_max,
+    },
   }
 end
 
@@ -1420,8 +1491,11 @@ end
 -- IR (d)ump (s)tatement (t)able
 local ir_dst = {}
 
-ir_dst['local'] = function(stmt)
-  io.write('  local '..stmt.name..'\n')
+ir_dst['salloc'] = function(stmt)
+  io.write('  salloc '..stmt.size..'\n')
+end
+ir_dst['sfree'] = function(stmt)
+  io.write('  sfree '..stmt.size..'\n')
 end
 
 function ir_dst.mov(stmt)
@@ -1517,27 +1591,33 @@ function ir_dump_statement(stmt)
   end
 end
 
+local function ir_dump_subroutine(subr)
+  io.write('  ; temp_count: '..subr.meta.temp_count..'\n')
+  io.write('sub '..subr.name..' (')
+  for i,arg_type in ipairs(subr.arguments) do
+    io.write(arg_type)
+    if i ~= #subr.arguments then
+      io.write(',')
+    end
+  end
+  io.write(' : ')
+  for i,arg_type in ipairs(subr.returns) do
+    io.write(arg_type)
+    if i ~= #subr.returns then
+      io.write(',')
+    end
+  end
+  io.write(')\n')
+  for i,stmt in ipairs(subr.statements) do
+    --pprint(stmt)
+    ir_dump_statement(stmt)
+  end
+  io.write('\n')
+end
+
 local function ir_dump(ir)
   for i,subr in ipairs(ir.subroutines) do
-    io.write('sub '..subr.name..' (')
-    for i,arg_type in ipairs(subr.arguments) do
-      io.write(arg_type)
-      if i ~= #subr.arguments then
-        io.write(',')
-      end
-    end
-    io.write(' : ')
-    for i,arg_type in ipairs(subr.returns) do
-      io.write(arg_type)
-      if i ~= #subr.returns then
-        io.write(',')
-      end
-    end
-    io.write(')\n')
-    for i,stmt in ipairs(subr.statements) do
-      --pprint(stmt)
-      ir_dump_statement(stmt)
-    end
+    ir_dump_subroutine(subr)
   end
 end
 
