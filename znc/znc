@@ -6,17 +6,21 @@ local pprint = require 'pprint'
 -- AST
 --------------------------------------------------------------------------------
 
+local function ast_name_path()
+  return { }
+end
+
 -- Expressions: (The list is long)
-local function ast_expr_negate(subexp)
-  return { type = 'negate', expression = subexp }
+local function ast_expr_negate(subexpr)
+  return { type = 'negate', expression = subexpr }
 end
 
-local function ast_expr_binnot(subexp)
-  return { type = 'binnot', expression = subexp }
+local function ast_expr_binnot(subexpr)
+  return { type = 'binnot', expression = subexpr }
 end
 
-local function ast_expr_lognot(subexp)
-  return { type = 'lognot', expression = subexp }
+local function ast_expr_lognot(subexpr)
+  return { type = 'lognot', expression = subexpr }
 end
 
 local function ast_expr_integer(value)
@@ -27,55 +31,55 @@ local function ast_expr_variable(name)
   return { type = 'variable', name = name }
 end
 
-local function ast_expr_mul(subexp_a, subexp_b)
-  return { type = 'mul', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_mul(subexpr_a, subexpr_b)
+  return { type = 'mul', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_div(subexp_a, subexp_b)
-  return { type = 'div', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_div(subexpr_a, subexpr_b)
+  return { type = 'div', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_add(subexp_a, subexp_b)
-  return { type = 'add', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_add(subexpr_a, subexpr_b)
+  return { type = 'add', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_sub(subexp_a, subexp_b)
-  return { type = 'sub', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_sub(subexpr_a, subexpr_b)
+  return { type = 'sub', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_cmplt(subexp_a, subexp_b)
-  return { type = 'cmplt', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_cmplt(subexpr_a, subexpr_b)
+  return { type = 'cmplt', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_cmpgt(subexp_a, subexp_b)
-  return { type = 'cmpgt', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_cmpgt(subexpr_a, subexpr_b)
+  return { type = 'cmpgt', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_cmpleq(subexp_a, subexp_b)
-  return { type = 'cmpleq', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_cmpleq(subexpr_a, subexpr_b)
+  return { type = 'cmpleq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_cmpgeq(subexp_a, subexp_b)
-  return { type = 'cmpgeq', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_cmpgeq(subexpr_a, subexpr_b)
+  return { type = 'cmpgeq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_cmpeq(subexp_a, subexp_b)
-  return { type = 'cmpeq', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_cmpeq(subexpr_a, subexpr_b)
+  return { type = 'cmpeq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_cmpneq(subexp_a, subexp_b)
-  return { type = 'cmpneq', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_cmpneq(subexpr_a, subexpr_b)
+  return { type = 'cmpneq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_logand(subexp_a, subexp_b)
-  return { type = 'logand', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_logand(subexpr_a, subexpr_b)
+  return { type = 'logand', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
-local function ast_expr_logor(subexp_a, subexp_b)
-  return { type = 'logor', expression_a = subexp_a, expression_b = subexp_b }
+local function ast_expr_logor(subexpr_a, subexpr_b)
+  return { type = 'logor', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
--- Statements: local | block | if | return | assign
+-- Statements: local | block | if | return | assign | call
 local function ast_stmt_local_declaration(type_name_path, name)
   return { type = 'local', type_name_path = type_name_path, name = name }
 end
@@ -94,6 +98,10 @@ end
 
 local function ast_stmt_assign(name, expr)
   return { type = 'assign', name = name, expression = expr }
+end
+
+local function ast_stmt_function_call(name_path, arg_list)
+  return { type = 'call', name_path = name_path, argument_list = arg_list }
 end
 
 -- Struct declarations: field | access
@@ -126,22 +134,22 @@ end
 local ast_dump_expr
 local ast_dump_stmt
 
-ast_dump_expr = function(exp, level)
+ast_dump_expr = function(expr, level)
   local level = level or 0
   local indent = string.rep('  ', level)
-  io.write(indent..string.upper(exp.type)..' ')
-  if exp.value then
-    io.write(tostring(exp.value)..'\n')
-  elseif exp.name then
-    io.write(exp.name..'\n')
+  io.write(indent..string.upper(expr.type)..' ')
+  if expr.value then
+    io.write(tostring(expr.value)..'\n')
+  elseif expr.name then
+    io.write(expr.name..'\n')
   else
     io.write('\n')
   end
-  if exp.expression then
-    ast_dump_expr(exp.expression, level+1)
-  elseif exp.expression_a and exp.expression_b then
-    ast_dump_expr(exp.expression_a, level+1)
-    ast_dump_expr(exp.expression_b, level+1)
+  if expr.expression then
+    ast_dump_expr(expr.expression, level+1)
+  elseif expr.expression_a and expr.expression_b then
+    ast_dump_expr(expr.expression_a, level+1)
+    ast_dump_expr(expr.expression_b, level+1)
   end
 end
 
@@ -171,6 +179,11 @@ ast_dump_stmt = function(stmt, level)
     io.write(indent..'BLOCK\n')
     for i,block_stmt in ipairs(stmt) do
       ast_dump_stmt(block_stmt, level+1)
+    end
+  elseif stmt.type == 'call' then
+    io.write(indent..'CALL '..table.concat(stmt.name_path,':')..'\n')
+    for i,arg_expr in ipairs(stmt.argument_list) do
+      ast_dump_expr(arg_expr, level+1)
     end
   end
 end
@@ -326,6 +339,9 @@ local function Lexer(file)
         elseif c == '.' then
           c = readc()
           yield { type = 'dot' }
+        elseif c == ',' then
+          c = readc()
+          yield { type = 'comma' }
         elseif c == '+' then
           c = readc()
           yield { type = 'plus' }
@@ -387,7 +403,7 @@ local function Lexer(file)
             c = readc()
             yield { type = 'cmpeq' }
           else
-            yield { type = 'assign' }
+            yield { type = 'equals' }
           end
         elseif c == '\n' then
           c = readc()
@@ -417,38 +433,48 @@ end
 
 Full parser grammar, in extended BNF:
 
-<name-path> := <name> { ':' <name> }
+<name-path-cdr> := { ':' <name> }
+<name-path> := <name> <name-path-cdr>
 
-<access-declaration> := 'access' <name-path> ';'
-<field-declaration> := <name-path> <name> ';'
-<struct-declaration> := 'struct' <name-path> '{' { <access-declaration> | <field-declaration> } '}'
-
-<expression0> := '(' <expression> ')'
-               | ( '-' | '~' | '!' ) <expression0> 
+<expression-p0> := '(' <expression> ')'
+               | ( '-' | '~' | '!' ) <expression-p0> 
                | <integer> 
                | <name>
-<expression1> := <expression0> { ( '*' | '/' ) <expression0> }
-<expression2> := <expression1> { ( '+' | '-' ) <expression1> }
-<expression3> := <expression2> { ( '<' | '>' | '<=' | '>=' ) <expression2> }
-<expression4> := <expression3> { ( '==' | '!=' ) <expression3> }
-<expression5> := <expression4> { '&&' <expression4> }
-<expression6> := <expression5> { '||' <expression5> }
-<expression> := <expression6>
+<expression-p1> := <expression-p0> { ( '*' | '/' ) <expression-p0> }
+<expression-p2> := <expression-p1> { ( '+' | '-' ) <expression-p1> }
+<expression-p3> := <expression-p2> { ( '<' | '>' | '<=' | '>=' ) <expression-p2> }
+<expression-p4> := <expression-p3> { ( '==' | '!=' ) <expression-p3> }
+<expression-p5> := <expression-p4> { '&&' <expression-p4> }
+<expression-p6> := <expression-p5> { '||' <expression-p5> }
+<expression> := <expression-p6>
 
-<statement> := 'return' [ <expression> ] ';'
-             | <if-statement>
-             | <name> ( '=' <expression> ';' | { ':' <name> } <name> ';' )
-             | <expression> ';'
-
-<block> := '{' { <statement> } '}'
+<argument-list> := <expression> { ',' <expression> }
 
 <if-body> := 'if' '(' <expression> ')' <block>
 <else-body> := 'else' ( <if-body> [ <else-body> ] | <block> )
 <if-statement> := <if-body> [ <else-body> ]
 
+<statement-post-name-path> := <name> ';' | '(' [ <argument-list> ] ')' ';'
+<statement-post-name> := '=' <expression> ';' | <name-path-cdr> <statement-post-name-path>
+<statement> := 'return' [ <expression> ] ';'
+             | <if-statement>
+             | <block>
+             | <name> <statement-post-name>
+             | <expression> ';'
+
+<block> := '{' { <statement> } '}'
+
 <function-declaration> := 'function' <name> '(' ')' <block>
 <member-declaration> := <name-path> <name> ';'
-<module-declaration> := 'module' <name-path> '{' { <function-declaration> | <member-declaration> } '}'
+<module-body-declaration> := <function-declaration> | <member-declaration>
+<module-declaration> := 'module' <name-path> '{' { <module-body-declaration> } '}'
+
+<access-declaration> := 'access' <name-path> ';'
+<field-declaration> := <name-path> <name> ';'
+<struct-body-declaration> := <access-declaration> | <field-declaration>
+<struct-declaration> := 'struct' <name-path> '{' { <struct-body-declaration> } '}'
+
+<file-scope-declaration> := <struct-declaration> | <module-declaration>
 
 ]]
 
@@ -486,7 +512,7 @@ local token_type_strings = {
   [ 'logor' ]     = '`||`',
   [ 'binor' ]     = '`|`',
   [ 'cmpeq' ]     = '`==`',
-  [ 'assign' ]    = '`=`',
+  [ 'equals' ]    = '`=`',
 }
 
 -- Prints a parse error message and exits.
@@ -512,113 +538,140 @@ local function parse_abort_expected(L, ...)
   os.exit(3)
 end
 
--- Parses a single token of the given type, does not return a value
+-- Unless otherwise specified,
+--   > Functions of the form expect_xxxx throw an error if the next token is not valid to start rule xxxx.
+--   > Functions of the form parse_xxxx return nil if the next token is not valid to start rule xxxx.
+
+-- Tries to parse a token of the given type
 local function parse_token(L, type)
   if L.next.type == type then
     L:read()
+    return true
   else
-    parse_abort_expected(L, type)
+    return false
   end
 end
 
--- Parses a <name> token
--- Returns the name as a string
+-- Expects to parse a token of the given type
+local function expect_token(L, type)
+  if not parse_token(L, type) then
+    parse_abort_expected(L, type)
+  end
+  return true
+end
+
+-- Tries to parse a <name> token
 local function parse_name(L)
   if L.next.type == 'name' then
     local name = L.next.value
     L:read()
     return name
-  else
-    parse_abort_expected(L, 'name')
   end
 end
 
--- Parses the remainder of a <name-path>, where the first name has already been read
--- Does this count as backtracking? Maybe.
-local function parse_name_path_lead1(L, leading_name)
-  local name_path = {}
-  if leading_name == 'global' then
-    name_path.absolute = true
-  else
-    name_path.absolute = false
-    table.insert(name_path, leading_name)
+-- Expects to parse a <name> token
+local function expect_name(L)
+  local name = parse_name(L)
+  if not name then
+    parse_abort_expected(L, 'name')
   end
-  while L.next.type == 'colon' do
-    L:read()
-    local name = parse_name(L)
-    table.insert(name_path, name)
+  return name
+end
+
+-- Tries to parse the rule: <name-path-cdr>
+-- Returns the AST object for a name path, using leading_name as the top-level name
+local function parse_name_path_rest(L, leading_name)
+  local name_path = ast_name_path()
+  table.insert(name_path, leading_name)
+  while parse_token(L, 'colon') do
+    table.insert(name_path, expect_name(L))
   end
   return name_path
 end
 
--- Parses a <name-path>
+-- Tries to parse the rule: <name-path>
 -- Returns the AST object for a name path
 local function parse_name_path(L)
-  return parse_name_path_lead1(L, parse_name(L))
+  local name = parse_name(L)
+  if name then
+    return parse_name_path_rest(L, name)
+  end
 end
 
--- Parses a <struct-access-declaration>
+-- Expects to parse the rule: <name-path>
+-- Returns the AST object for a name path
+local function expect_name_path(L)
+  return parse_name_path_rest(L, expect_name(L))
+end
+
+-- Tries to parse the rule: <struct-access-declaration>
 -- Returns the AST object for a struct access declaration
 local function parse_struct_access_declaration(L)
-  parse_token(L, 'access')
-  local name_path = parse_name_path(L)
-  parse_token(L, 'semicolon')
-  return ast_struct_access_declaration(name_path)
+  if parse_token(L, 'access') then
+    local name_path = expect_name_path(L)
+    expect_token(L, 'semicolon')
+    return ast_struct_access_declaration(name_path)
+  end
 end
 
--- Parses a <struct-field-declaration>
+-- Tries to parse the rule: <struct-field-declaration>
 -- Returns the AST object for a struct field declaration
 local function parse_struct_field_declaration(L)
   local type_name_path = parse_name_path(L)
-  local name = parse_name(L)
-  parse_token(L, 'semicolon')
-  return ast_struct_field_declaration(type_name_path, name)
+  if type_name_path then
+    local name = expect_name(L)
+    expect_token(L, 'semicolon')
+    return ast_struct_field_declaration(type_name_path, name)
+  end
 end
 
--- Parses a <struct-declaration>
+-- Expects to parse the rule: <struct-access-declaration>
+-- Returns the appropriate AST object for the declaration
+local function expect_struct_body_declaration(L)
+  local decl = parse_struct_access_declaration(L)
+  if decl then return decl end
+  decl = parse_struct_field_declaration(L)
+  if decl then return decl end
+  parse_abort_expected(L, 'field/access declaration')
+end
+
+-- Tries to parse the rule: <struct-declaration>
 -- Returns the AST object for a struct declaration
 local function parse_struct_declaration(L)
   local name_path 
   local declarations = {}
-  -- Read struct header
-  parse_token(L, 'struct')
-  name_path = parse_name_path(L)
-  parse_token(L, 'lcurly')
-  -- Read declarations until an rcurly
-  while L.next.type ~= 'rcurly' do
-    if L.next.type == 'access' then
-      table.insert(declarations, parse_struct_access_declaration(L));
-    elseif L.next.type == 'name' then
-      table.insert(declarations, parse_struct_field_declaration(L));
-    else
-      parse_abort_expected(L, 'field/access declaration')
+  if parse_token(L, 'struct') then
+    local name_path = expect_name_path(L)
+    expect_token(L, 'lcurly')
+    while not parse_token(L, 'rcurly') do
+      table.insert(declarations, expect_struct_body_declaration(L))
     end
+    return ast_struct_declaration(name_path, declarations)
   end
-  -- Read last rcurly
-  L:read()
-  return ast_struct_declaration(name_path, declarations)
 end
 
--- Parses an <expression0>
+local parse_expression
+
+-- Tries to parse the rule: <expression-p0>
 -- Returns the AST object for an expression
-function parse_expression_0(L)
+function parse_expression_p0(L)
   if L.next.type == 'lparen' then
     L:read()
-    local subexp = parse_expression(L)
-    parse_token(L, 'rparen')
-    return subexp
+    local subexpr = parse_expression(L)
+    expect_token(L, 'rparen')
+    return subexpr
   elseif L.next.type == 'minus' then
     L:read()
-    local subexp = parse_expression_0(L)
-    return ast_expr_negate(subexp)
+    local subexpr = parse_expression_p0(L)
+    return ast_expr_negate(subexpr)
   elseif L.next.type == 'tilde' then
     L:read()
-    local subexp = parse_expression_0(L)
-    return ast_expr_binnot(subexp)
+    local subexpr = parse_expression_p0(L)
+    return ast_expr_binnot(subexpr)
   elseif L.next.type == 'lognot' then
     L:read()
-    local subexp = parse_expression_0(L)
-    return ast_expr_lognot(subexp)
+    local subexpr = parse_expression_p0(L)
+    return ast_expr_lognot(subexpr)
   elseif L.next.type == 'integer' then
     local value = L.next.value
     L:read()
@@ -628,295 +681,864 @@ function parse_expression_0(L)
     L:read()
     return ast_expr_variable(name)
   else
-    parse_abort_expected(L, 'expression')
+    return nil
   end
 end
 
--- Parses an <expression1>
+-- Tries to parse the rule: <expression-p1>
 -- Returns the AST object for an expression
-function parse_expression_1(L)
+function parse_expression_p1(L)
   -- Read first operator argument (may be the only one)
-  local subexp = parse_expression_0(L)
+  local subexpr = parse_expression_p0(L)
   while L.next.type == 'asterisk' or L.next.type == 'fslash' do
     -- Read operator
     local optype = L.next.type
     L:read()
     -- Read second operator argument
-    local subexp2 = parse_expression_0(L)
+    local subexpr2 = parse_expression_p0(L)
     if optype == 'asterisk' then
-      subexp = ast_expr_mul(subexp, subexp2)
+      subexpr = ast_expr_mul(subexpr, subexpr2)
     elseif optype == 'fslash' then
-      subexp = ast_expr_div(subexp, subexp2)
+      subexpr = ast_expr_div(subexpr, subexpr2)
     end
   end
-  return subexp
+  return subexpr
 end
 
--- Parses an <expression2>
+-- Tries to parse the rule: <expression-p2>
 -- Returns the AST object for an expression
-function parse_expression_2(L)
+function parse_expression_p2(L)
   -- Read first operator argument (may be the only one)
-  local subexp = parse_expression_1(L)
+  local subexpr = parse_expression_p1(L)
   while L.next.type == 'plus' or L.next.type == 'minus' do
     -- Read operator
     local optype = L.next.type
     L:read()
     -- Read second operator argument
-    local subexp2 = parse_expression_1(L)
+    local subexpr2 = parse_expression_p1(L)
     if optype == 'plus' then
-      subexp = ast_expr_add(subexp, subexp2)
+      subexpr = ast_expr_add(subexpr, subexpr2)
     elseif optype == 'minus' then
-      subexp = ast_expr_sub(subexp, subexp2)
+      subexpr = ast_expr_sub(subexpr, subexpr2)
     end
   end
-  return subexp
+  return subexpr
 end
 
--- Parses an <expression3>
+-- Tries to parse the rule: <expression-p3>
 -- Returns the AST object for an expression
-function parse_expression_3(L)
+function parse_expression_p3(L)
   -- Read first operator argument (may be the only one)
-  local subexp = parse_expression_2(L)
+  local subexpr = parse_expression_p2(L)
   while L.next.type == 'cmplt' or L.next.type == 'cmpgt' or L.next.type == 'cmpleq' or L.next.type == 'cmpgeq' do
     -- Read operator
     local optype = L.next.type
     L:read()
     -- Read second operator argument
-    local subexp2 = parse_expression_2(L)
+    local subexpr2 = parse_expression_p2(L)
     if optype == 'cmplt' then
-      subexp = ast_expr_cmplt(subexp, subexp2)
+      subexpr = ast_expr_cmplt(subexpr, subexpr2)
     elseif optype == 'cmpgt' then
-      subexp = ast_expr_cmpgt(subexp, subexp2)
+      subexpr = ast_expr_cmpgt(subexpr, subexpr2)
     elseif optype == 'cmpleq' then
-      subexp = ast_expr_cmpleq(subexp, subexp2)
+      subexpr = ast_expr_cmpleq(subexpr, subexpr2)
     elseif optype == 'cmpgeq' then
-      subexp = ast_expr_cmpgeq(subexp, subexp2)
+      subexpr = ast_expr_cmpgeq(subexpr, subexpr2)
     end
   end
-  return subexp
+  return subexpr
 end
 
--- Parses an <expression4>
+-- Tries to parse the rule: <expression-p4>
 -- Returns the AST object for an expression
-function parse_expression_4(L)
+function parse_expression_p4(L)
   -- Read first operator argument (may be the only one)
-  local subexp = parse_expression_3(L)
+  local subexpr = parse_expression_p3(L)
   while L.next.type == 'cmpeq' or L.next.type == 'cmpneq' do
     -- Read operator
     local optype = L.next.type
     L:read()
     -- Read second operator argument
-    local subexp2 = parse_expression_3(L)
+    local subexpr2 = parse_expression_p3(L)
     if optype == 'cmpeq' then
-      subexp = ast_expr_cmpeq(subexp, subexp2)
+      subexpr = ast_expr_cmpeq(subexpr, subexpr2)
     elseif optype == 'cmpneq' then
-      subexp = ast_expr_cmpneq(subexp, subexp2)
+      subexpr = ast_expr_cmpneq(subexpr, subexpr2)
     end
   end
-  return subexp
+  return subexpr
 end
 
--- Parses an <expression5>
+-- Tries to parse the rule: <expression-p5>
 -- Returns the AST object for an expression
-function parse_expression_5(L)
+function parse_expression_p5(L)
   -- Read first operator argument (may be the only one)
-  local subexp = parse_expression_4(L)
+  local subexpr = parse_expression_p4(L)
   while L.next.type == 'logand' do
     -- Read operator
     local optype = L.next.type
     L:read()
     -- Read second operator argument
-    local subexp2 = parse_expression_4(L)
+    local subexpr2 = parse_expression_p4(L)
     if optype == 'logand' then
-      subexp = ast_expr_logand(subexp, subexp2)
+      subexpr = ast_expr_logand(subexpr, subexpr2)
     end
   end
-  return subexp
+  return subexpr
 end
 
--- Parses an <expression6>
+-- Tries to parse the rule: <expression-p6>
 -- Returns the AST object for an expression
-function parse_expression_6(L)
+function parse_expression_p6(L)
   -- Read first operator argument (may be the only one)
-  local subexp = parse_expression_5(L)
+  local subexpr = parse_expression_p5(L)
   while L.next.type == 'logor' do
     -- Read operator
     local optype = L.next.type
     L:read()
     -- Read second operator argument
-    local subexp2 = parse_expression_5(L)
+    local subexpr2 = parse_expression_p5(L)
     if optype == 'logor' then
-      subexp = ast_expr_logor(subexp, subexp2)
+      subexpr = ast_expr_logor(subexpr, subexpr2)
     end
   end
-  return subexp
+  return subexpr
 end
 
--- Parses an <expression>
-parse_expression = parse_expression_6
+-- Tries to parse the rule: <expression>
+parse_expression = parse_expression_p6
 
-local parse_statement
+-- Expects to parse the rule: <block>
+-- Returns the AST object for an expression
+function expect_expression(L)
+  local expr = parse_expression(L)
+  if not expr then
+    parse_abort_expected(L, 'expression')
+  end
+  return expr
+end
+
+local expect_statement
 local parse_if_statement
 
--- Parses a <block>
--- Returns the AST object for a block
+-- Tries to parse the rule: <block>
+-- Returns the AST object for a block statement
 local function parse_block(L)
-  local block = ast_stmt_block()
-  parse_token(L, 'lcurly')
-  while L.next.type ~= 'rcurly' do
-    table.insert(block, parse_statement(L))
+  if parse_token(L, 'lcurly') then
+    local block = ast_stmt_block()
+    while not parse_token(L, 'rcurly') do
+      table.insert(block, expect_statement(L))
+    end
+    return block
   end
-  parse_token(L, 'rcurly')
+end
+
+-- Expects to parse the rule: <block>
+-- Returns the AST object for a block statement
+local function expect_block(L)
+  local block = parse_block(L)
+  if not block then
+    parse_abort_expected(L, 'block')
+  end
   return block
 end
 
--- Parses an <if-body>
+-- Attempts to parse the rule: <if-body>
 -- Returns the expression AST object and the block AST object separately
 local function parse_if_body(L)
-  local expr
-  local block
-  parse_token(L, 'if')
-  parse_token(L, 'lparen')
-  expr = parse_expression(L)
-  parse_token(L, 'rparen')
-  block = parse_block(L)
-  return expr, block
+  local expr, block
+  if parse_token(L, 'if') then
+    expect_token(L, 'lparen')
+    expr = expect_expression(L)
+    expect_token(L, 'rparen')
+    block = expect_block(L)
+    return expr, block
+  end
 end
 
--- Parses an <else-body>
+-- Tries to parse the rule: <else-body>
 -- Returns the AST object for an if statement
 local function parse_else_body(L)
-  parse_token(L, 'else')
-  if L.next.type == 'if' then
-    return parse_if_statement(L)
-  elseif L.next.type == 'lcurly' then
-    return parse_block(L)
-  else
+  if parse_token(L, 'else') then
+    local stmt = parse_if_statement(L)
+    if stmt then return stmt end
+    stmt = parse_block(L)
+    if stmt then return stmt end
     -- Curly braces are not optional!
     parse_abort_expected(L, 'if', 'lcurly')
   end
 end
 
--- Parses an <if-statement>
+-- Tries to parse the rule: <if-statement>
 -- Returns the AST object for an if statement
 parse_if_statement = function(L)
   local expr, if_stmt = parse_if_body(L)
-  local else_stmt
-  if L.next.type == 'else' then
-    else_stmt = parse_else_body(L)
+  if expr then
+    -- if statement parsed, try to read its else clause
+    local else_stmt = parse_else_body(L)
+    return ast_stmt_if(expr, if_stmt, else_stmt)
   end
-  return ast_stmt_if(expr, if_stmt, else_stmt)
 end
 
--- Parses a <statement>
--- Returns the AST object for a statement
-parse_statement = function(L)
-  if L.next.type == 'return' then
-    -- Return statements are simple; optionally return an expression
-    L:read()
-    if L.next.type == 'semicolon' then
-      L:read()
-      return ast_stmt_return(nil)
-    else
-      local expr = parse_expression(L)
-      parse_token(L, 'semicolon')
-      return ast_stmt_return(expr)
+-- Parses: [ <argument-list> ]
+-- Returns the AST object for an argument list
+-- Returns an empty list if no expressions could be read
+local function parse_optional_argument_list(L)
+  local list = {}
+  local expr = parse_expression(L)
+  if expr then
+    table.insert(list, expr)
+    while parse_token(L, 'comma') do
+      table.insert(list, expect_expression(L))
     end
-  elseif L.next.type == 'if' then
-    return parse_if_statement(L)
-  elseif L.next.type == 'lcurly' then
-    return parse_block(L)
-  elseif L.next.type == 'name' then
+  end
+  return list
+end
+
+-- Expects to parse the rule: <statement>
+-- Returns the AST object for a statement
+expect_statement = function(L)
+  if parse_token(L, 'return') then
+    -- Easiest statement ever
+    local stmt = ast_stmt_return(parse_expression(L))
+    expect_token(L, 'semicolon')
+    return stmt
+  end
+  local stmt = parse_if_statement(L)
+  if stmt then return stmt end
+  stmt = parse_block(L)
+  if stmt then return stmt end
+  local first_name = parse_name(L)
+  if first_name then
     -- Reading a name could mean a variable declaration, or a variable assignment
-    local first_name = L.next.value
-    L:read()
-    if L.next.type == 'assign' then
-      L:read()
+    if parse_token(L, 'equals') then
       -- Assigning first_name to expr
-      local expr = parse_expression(L)
-      parse_token(L, 'semicolon')
+      local expr = expect_expression(L)
+      expect_token(L, 'semicolon')
       -- That's a variable assignment
       return ast_stmt_assign(first_name, expr)
-    elseif L.next.type == 'colon' or L.next.type == 'name' then
-      -- Read variable type (first name already known)
-      local type_name_path = parse_name_path_lead1(L, first_name)
-      -- Read variable name
-      local name = parse_name(L)
-      parse_token(L, 'semicolon')
-      -- That's the declaration, me boy
-      return ast_stmt_local_declaration(type_name_path, name)
-    else
-      parse_abort_expected(L, 'assign', 'colon', 'name')
     end
-  else
-    parse_abort_expected(L, 'statement')
+    -- Read remainder of path, if applicable (first name already known)
+    name_path = parse_name_path_rest(L, first_name)
+    -- Try to read a name
+    local name = parse_name(L)
+    if name then
+      -- name_path is a local variable declaration's type
+      expect_token(L, 'semicolon')
+      -- That's the declaration, me boy
+      return ast_stmt_local_declaration(name_path, name)
+    end
+    -- Try to read an lparen
+    if parse_token(L, 'lparen') then
+      -- Read function call arg_list
+      local arg_list = parse_optional_argument_list(L)
+      expect_token(L, 'rparen')
+      expect_token(L, 'semicolon')
+      return ast_stmt_function_call(name_path, arg_list)
+    end
+    parse_abort_expected(L, 'equals', 'colon', 'name', 'lparen')
+  end
+  parse_abort_expected(L, 'statement')
+end
+
+-- Tries to parse the rule: <function-declaration>
+-- Returns the AST object for a function declaration
+local function parse_function_declaration(L)
+  if parse_token(L, 'function') then
+    local name = expect_name(L)
+    expect_token(L, 'lparen')
+    expect_token(L, 'rparen')
+    local block = parse_block(L)
+    return ast_function_declaration(name, block)
   end
 end
 
--- Parses a <function-declaration>
--- Returns the AST object for a function declaration
-local function parse_function_declaration(L)
-  parse_token(L, 'function');
-  local name = parse_name(L)
-  parse_token(L, 'lparen')
-  parse_token(L, 'rparen')
-  local block = parse_block(L)
-  return ast_function_declaration(name, block)
-end
-
--- Parses a <member-declaration>
+-- Tries to parse the rule: <member-declaration>
 -- Returns the AST object for a member declaration
 local function parse_member_declaration(L)
   local type_name_path = parse_name_path(L)
-  local name = parse_name(L)
-  parse_token(L, 'semicolon')
-  return ast_member_declaration(type_name_path, name)
+  if type_name_path then
+    local name = expect_name(L)
+    expect_token(L, 'semicolon')
+    return ast_member_declaration(type_name_path, name)
+  end
 end
 
--- Parses a <module-declaration>
+-- Expects to parse the rule: <module-body-declaration>
+-- Returns the appropriate AST object for the declaration
+local function expect_module_body_declaration(L)
+  local decl = parse_function_declaration(L)
+  if decl then return decl end
+  decl = parse_member_declaration(L)
+  if decl then return decl end
+  parse_abort_expected(L, 'member/function declaration');
+end
+
+-- Tries to parse the rule: <module-declaration>
 -- Returns the AST object for a module declaration
-local function parse_module(L)
+local function parse_module_declaration(L)
   local name_path 
   local declarations = {}
-  -- Read module header
-  parse_token(L, 'module')
-  name_path = parse_name_path(L)
-  parse_token(L, 'lcurly')
-  -- Read declarations until an rcurly
-  while L.next.type ~= 'rcurly' do
-    if L.next.type == 'function' then
-      table.insert(declarations, parse_function_declaration(L))
-    elseif L.next.type == 'name' then
-      table.insert(declarations, parse_member_declaration(L))
-    else
-      parse_abort_expected(L, 'member/function declaration');
+  if parse_token(L, 'module') then
+    name_path = expect_name_path(L)
+    expect_token(L, 'lcurly')
+    -- Read declarations until an rcurly
+    while not parse_token(L, 'rcurly') do
+      table.insert(declarations, expect_module_body_declaration(L))
     end
+    return ast_module_declaration(name_path, declarations)
   end
-  -- Read last rcurly
-  L:read()
-  return { type = 'module', name_path = name_path, declarations = declarations }
+end
+
+-- Expects to parse the rule: <file-scope-declaration>
+-- Returns the appropriate AST object for the declaration
+local function expect_file_scope_declaration(L)
+  local decl = parse_struct_declaration(L)
+  if decl then return decl end
+  decl = parse_module_declaration(L)
+  if decl then return decl end
+  parse_abort_expected(L, 'file-scope declaration');
 end
 
 -- Parses a file
 -- Returns the AST object for a translation unit
 local function parse_file(file_in)
   local L = Lexer(file_in)
-
   local file_declarations = {}
+  while not parse_token(L, 'eof') do
+    table.insert(file_declarations, expect_file_scope_declaration(L))
+  end
+  L:close()
+  return file_declarations
+end
 
-  while L.next.type ~= 'eof' do
-    if L.next.type == 'struct' then
-      table.insert(file_declarations, parse_struct_declaration(L))
-    elseif L.next.type == 'module' then
-      table.insert(file_declarations, parse_module(L))
-    else
-      parse_abort_expected(L, 'struct/module declaration');
+--------------------------------------------------------------------------------
+-- Compilation
+--------------------------------------------------------------------------------
+
+local function ir_local(name)
+  return { type = 'local', name = name }
+end
+
+local function ir_mov(reg_z, reg_x)
+  return { type = 'mov', register_z = reg_z, register_x = reg_x }
+end
+
+local function ir_neg(reg_z, reg_x)
+  return { type = 'neg', register_z = reg_z, register_x = reg_x }
+end
+local function ir_bnot(reg_z, reg_x)
+  return { type = 'bnot', register_z = reg_z, register_x = reg_x }
+end
+local function ir_lnot(reg_z, reg_x)
+  return { type = 'lnot', register_z = reg_z, register_x = reg_x }
+end
+
+local function ir_add(reg_z, reg_x, reg_y)
+  return { type = 'add', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+local function ir_sub(reg_z, reg_x, reg_y)
+  return { type = 'sub', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+local function ir_mul(reg_z, reg_x, reg_y)
+  return { type = 'mul', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+local function ir_div(reg_z, reg_x, reg_y)
+  return { type = 'div', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+
+local function ir_eq(reg_z, reg_x, reg_y)
+  return { type = 'eq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+local function ir_neq(reg_z, reg_x, reg_y)
+  return { type = 'neq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+local function ir_lt(reg_z, reg_x, reg_y)
+  return { type = 'lt', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+local function ir_gt(reg_z, reg_x, reg_y)
+  return { type = 'gt', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+local function ir_leq(reg_z, reg_x, reg_y)
+  return { type = 'leq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+local function ir_geq(reg_z, reg_x, reg_y)
+  return { type = 'geq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+end
+
+-- Pushes a parameter onto the stack for use with call arguments
+local function ir_pusharg(reg)
+  return { type = 'pusharg', register = reg }
+end
+-- Pops a parameter off of the call argument stack and copies it into the given register
+local function ir_poparg(reg)
+  return { type = 'poparg', register = reg }
+end
+-- Calls a function. It will alter the call argument stack appropriately.
+local function ir_call(name)
+  return { type = 'call', name = name }
+end
+local function ir_ret()
+  return { type = 'ret' }
+end
+
+-- Defines a jump label
+local function ir_label(name)
+  return { type = 'label', name = name }
+end
+-- Unconditional jump
+local function ir_jmp(label_name)
+  return { type = 'jmp', label_name = label_name }
+end
+-- Jump if equal
+local function ir_jeq(label_name, reg_x, reg_y)
+  return { type = 'jeq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+end
+-- Jump if not equal
+local function ir_jneq(label_name, reg_x, reg_y)
+  return { type = 'jneq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+end
+-- Jump if zero
+local function ir_jz(label_name, reg)
+  return { type = 'jz', label_name = label_name, register = reg }
+end
+-- Jump if nonzero
+local function ir_jnz(label_name, reg)
+  return { type = 'jnz', label_name = label_name, register = reg }
+end
+-- Jump if less than
+local function ir_jlt(label_name, reg_x, reg_y)
+  return { type = 'jlt', label_name = label_name, register_x = reg_x, register_y = reg_y }
+end
+-- Jump if greater than
+local function ir_jgt(label_name, reg_x, reg_y)
+  return { type = 'jgt', label_name = label_name, register_x = reg_x, register_y = reg_y }
+end
+-- Jump if less than or equal
+local function ir_jleq(label_name, reg_x, reg_y)
+  return { type = 'jleq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+end
+-- Jump if greater than or equal
+local function ir_jgeq(label_name, reg_x, reg_y)
+  return { type = 'jgeq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+end
+
+local function pushtemp(ctx)
+  local idx = ctx.temp_index
+  ctx.temp_index = ctx.temp_index + 1
+  return 'r'..idx
+end
+local function poptemp(ctx)
+  ctx.temp_index = ctx.temp_index - 1
+end
+local function cleartemp(ctx)
+  ctx.temp_index = 0
+end
+
+local function newlabel(ctx)
+  local idx = ctx.label_index
+  ctx.label_index = ctx.label_index + 1
+  return '_l'..idx
+end
+
+local function ir_emit(ctx, ir_stmt)
+  table.insert(ctx.statements, ir_stmt)
+end
+
+local ir_emit_expression
+
+-- IR (e)mit (e)xpression (t)able
+local ir_eet = { }
+
+function ir_eet.integer(ctx, expr)
+  local reg = pushtemp(ctx)
+  ir_emit(ctx, ir_mov(reg, expr.value))
+  return reg
+end
+
+function ir_eet.negate(ctx, expr)
+  local reg = ir_emit_expression(ctx, expr.expression)
+  ir_emit(ctx, ir_neg(reg, reg))
+  return reg
+end
+
+function ir_eet.binnot(ctx, expr)
+  local reg = ir_emit_expression(ctx, expr.expression)
+  ir_emit(ctx, ir_bnot(reg, reg))
+  return reg
+end
+
+function ir_eet.lognot(ctx, expr)
+  local reg = ir_emit_expression(ctx, expr.expression)
+  ir_emit(ctx, ir_lnot(reg, reg))
+  return reg
+end
+
+function ir_eet.add(ctx, expr)
+  -- Emit subexpressions
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  -- Add this instruction to the list
+  ir_emit(ctx, ir_add(reg_a, reg_a, reg_b))
+  -- Free reg_b, it will be at the top of the temp stack
+  poptemp(ctx)
+  -- Return register of result
+  return reg_a
+end
+
+function ir_eet.sub(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_sub(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.mul(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_mul(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.div(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_div(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.cmpeq(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_eq(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.cmpneq(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_neq(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.cmplt(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_lt(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.cmpgt(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_gt(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.cmpleq(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_leq(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.cmpgeq(ctx, expr)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  ir_emit(ctx, ir_geq(reg_a, reg_a, reg_b))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.logand(ctx, expr)
+  local lab1 = newlabel(ctx)
+  local lab2 = newlabel(ctx)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  -- If nonzero, jump to the evaluation of the next expression
+  -- Otherwise, the result is zero, and reg_a already contains zero, so jump to end
+  ir_emit(ctx, ir_jnz(lab1, reg_a));
+  ir_emit(ctx, ir_jmp(lab2));
+  ir_emit(ctx, ir_label(lab1))
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  -- Set reg_a to zero iff reg_b is zero
+  ir_emit(ctx, ir_neq(reg_a, reg_b, 0))
+  ir_emit(ctx, ir_label(lab2))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.logor(ctx, expr)
+  local lab1 = newlabel(ctx)
+  local lab2 = newlabel(ctx)
+  local reg_a = ir_emit_expression(ctx, expr.expression_a)
+  -- If zero, jump to the evaluation of the next expression
+  -- Otherwise, set result to one, and jump to end
+  ir_emit(ctx, ir_jz(lab1, reg_a));
+  ir_emit(ctx, ir_mov(reg_a, 1));
+  ir_emit(ctx, ir_jmp(lab2));
+  ir_emit(ctx, ir_label(lab1))
+  local reg_b = ir_emit_expression(ctx, expr.expression_b)
+  -- Set reg_a to zero iff reg_b is zero
+  ir_emit(ctx, ir_neq(reg_a, reg_b, 0))
+  ir_emit(ctx, ir_label(lab2))
+  poptemp(ctx)
+  return reg_a
+end
+
+function ir_eet.variable(ctx, expr)
+  local reg = pushtemp(ctx)
+  ir_emit(ctx, ir_mov(reg, expr.name))
+  return reg
+end
+
+ir_emit_expression = function(ctx, expr)
+  local h = ir_eet[expr.type]
+  if h then
+    return h(ctx, expr)
+  else
+    io.write('Unknown expression type `'..expr.type..'`\n')
+    os.exit(4)
+  end
+end
+
+local ir_emit_statement
+
+-- IR (e)mit (s)tatement (t)able
+local ir_est = {}
+
+ir_est['if'] = function(ctx, ast_stmt)
+  if ast_stmt.else_statement then
+    local lab1 = newlabel(ctx)
+    local lab2 = newlabel(ctx)
+    local reg_exp = ir_emit_expression(ctx, ast_stmt.expression)
+    ir_emit(ctx, ir_jz(lab1, reg_exp))
+    ir_emit_statement(ctx, ast_stmt.if_statement)
+    ir_emit(ctx, ir_jmp(lab2))
+    ir_emit(ctx, ir_label(lab1))
+    ir_emit_statement(ctx, ast_stmt.else_statement)
+    ir_emit(ctx, ir_label(lab2))
+  else
+    local lab1 = newlabel(ctx)
+    local reg_exp = ir_emit_expression(ctx, ast_stmt.expression)
+    ir_emit(ctx, ir_jz(lab1, reg_exp))
+    ir_emit_statement(ctx, ast_stmt.if_statement)
+    ir_emit(ctx, ir_label(lab1))
+  end
+end
+
+ir_est['local'] = function(ctx, ast_stmt)
+  ctx.locals[ast_stmt.name] = ctx.stack_index
+  ctx.stack_index = ctx.stack_index + 1
+  ir_emit(ctx, ir_local(ast_stmt.name))
+end
+
+ir_est['return'] = function(ctx, ast_stmt)
+  local expr = ast_stmt.expression
+  if expr then
+    local reg = ir_emit_expression(ctx, expr)
+  else
+    local reg = pushtemp(ctx)
+    ir_emit(ctx, ir_mov(reg, 0))
+  end
+  ir_emit(ctx, ir_ret())
+end
+
+function ir_est.assign(ctx, ast_stmt)
+  local reg = ir_emit_expression(ctx, ast_stmt.expression)
+  ir_emit(ctx, ir_mov(ast_stmt.name, reg))
+end
+
+function ir_est.call(ctx, ast_stmt)
+  -- THE BIG TODO
+end
+
+function ir_est.block(ctx, ast_stmt)
+  for i,ast_substmt in ipairs(ast_stmt) do
+    ir_emit_statement(ctx, ast_substmt)
+  end
+end
+
+ir_emit_statement = function(ctx, ast_stmt)
+  cleartemp(ctx)
+  local h = ir_est[ast_stmt.type]
+  if h then
+    h(ctx, ast_stmt)
+  else
+    error('Unknown AST statement type `'..ast_stmt.type..'`')
+  end
+end
+
+local function ir_subroutine(ast_module_name_path, ast_func)
+  local arguments = { 'int', 'int' }
+  local returns = { 'int' }
+  local statements = { }
+
+  ctx = {
+    locals = { },
+    statements = statements,
+    stack_index = 0,
+    temp_index = 0,
+    label_index = 0,
+  }
+
+  ir_emit_statement(ctx, ast_func.block)
+
+  return {
+    type = 'subroutine',
+    name = table.concat(ast_module_name_path, '$')..'$'..ast_func.name,
+    arguments = arguments,
+    returns = returns,
+    statements = statements,
+  }
+end
+
+local function compile_ir(ast)
+  local ir = {}
+  ir.subroutines = {}
+  for i,ast_fdecl in ipairs(ast) do
+    if ast_fdecl.type == 'module' then
+      local ast_module = ast_fdecl
+      for i,mdecl in ipairs(ast_module.declarations) do
+        if mdecl.type == 'function' then
+          local ast_func = mdecl
+          table.insert(ir.subroutines, ir_subroutine(ast_module.name_path, ast_func))
+        end
+      end
     end
   end
+  return ir
+end
 
-  L:close()
+-- IR (d)ump (s)tatement (t)able
+local ir_dst = {}
 
-  return file_declarations
+ir_dst['local'] = function(stmt)
+  io.write('  local '..stmt.name..'\n')
+end
+
+function ir_dst.mov(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..'\n')
+end
+
+function ir_dst.neg(stmt)
+  io.write('  '..stmt.register_z..' := -'..stmt.register_x..'\n')
+end
+function ir_dst.bnot(stmt)
+  io.write('  '..stmt.register_z..' := ~'..stmt.register_x..'\n')
+end
+function ir_dst.lnot(stmt)
+  io.write('  '..stmt.register_z..' := !'..stmt.register_x..'\n')
+end
+
+function ir_dst.add(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' + '..stmt.register_y..'\n')
+end
+function ir_dst.sub(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' - '..stmt.register_y..'\n')
+end
+function ir_dst.mul(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' * '..stmt.register_y..'\n')
+end
+function ir_dst.div(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' / '..stmt.register_y..'\n')
+end
+
+function ir_dst.eq(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' == '..stmt.register_y..'\n')
+end
+function ir_dst.neq(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' != '..stmt.register_y..'\n')
+end
+function ir_dst.lt(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' < '..stmt.register_y..'\n')
+end
+function ir_dst.gt(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' > '..stmt.register_y..'\n')
+end
+function ir_dst.leq(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' <= '..stmt.register_y..'\n')
+end
+function ir_dst.geq(stmt)
+  io.write('  '..stmt.register_z..' := '..stmt.register_x..' >= '..stmt.register_y..'\n')
+end
+
+function ir_dst.call(stmt)
+  io.write('  call '..stmt.name..'\n')
+end
+function ir_dst.ret(stmt)
+  io.write('  ret\n')
+end
+
+function ir_dst.label(stmt)
+  io.write(stmt.name..':\n')
+end
+function ir_dst.jmp(stmt)
+  io.write('  goto '..stmt.label_name..'\n')
+end
+function ir_dst.jz(stmt)
+  io.write('  if !'..stmt.register..' goto '..stmt.label_name..'\n')
+end
+function ir_dst.jnz(stmt)
+  io.write('  if '..stmt.register..' goto '..stmt.label_name..'\n')
+end
+function ir_dst.jeq(stmt)
+  io.write('  if '..stmt.register_x..' == '..stmt.register_y..' goto '..stmt.label_name..'\n')
+end
+function ir_dst.jneq(stmt)
+  io.write('  if '..stmt.register_x..' != '..stmt.register_y..' goto '..stmt.label_name..'\n')
+end
+function ir_dst.jlt(stmt)
+  io.write('  if '..stmt.register_x..' < '..stmt.register_y..' goto '..stmt.label_name..'\n')
+end
+function ir_dst.jgt(stmt)
+  io.write('  if '..stmt.register_x..' > '..stmt.register_y..' goto '..stmt.label_name..'\n')
+end
+function ir_dst.jleq(stmt)
+  io.write('  if '..stmt.register_x..' <= '..stmt.register_y..' goto '..stmt.label_name..'\n')
+end
+function ir_dst.jgeq(stmt)
+  io.write('  if '..stmt.register_x..' >= '..stmt.register_y..' goto '..stmt.label_name..'\n')
+end
+
+function ir_dump_statement(stmt)
+  local h = ir_dst[stmt.type]
+  if h then
+    h(stmt)
+  else
+    error('Unknown IR statement type `'..stmt.type..'`')
+  end
+end
+
+local function ir_dump(ir)
+  for i,subr in ipairs(ir.subroutines) do
+    io.write('sub '..subr.name..' (')
+    for i,arg_type in ipairs(subr.arguments) do
+      io.write(arg_type)
+      if i ~= #subr.arguments then
+        io.write(',')
+      end
+    end
+    io.write(' : ')
+    for i,arg_type in ipairs(subr.returns) do
+      io.write(arg_type)
+      if i ~= #subr.returns then
+        io.write(',')
+      end
+    end
+    io.write(')\n')
+    for i,stmt in ipairs(subr.statements) do
+      --pprint(stmt)
+      ir_dump_statement(stmt)
+    end
+  end
 end
 
 --------------------------------------------------------------------------------
@@ -949,10 +1571,22 @@ local function emit_line(ctx)
   ctx.outfile:write('\n')
 end
 
+local function dup_scope(scope)
+  local new_scope = { }
+  -- Inerit access to all of this scope's local variables
+  if scope then
+    for k,v in pairs(scope) do
+      new_scope[k] = scope[k]
+    end
+  end
+  return new_scope
+end
+
+local emit_statement
+local emit_expression
+
 -- The (e)mit (e)xpression (t)able
 local eet = {}
-
-local emit_expression
 
 function eet.integer(ctx, expr)
   emit(ctx, 'mov $'..expr.value..', %rax')
@@ -1131,8 +1765,6 @@ local function emit_epilogue(ctx)
   emit(ctx, 'ret')
 end
 
-local emit_statement
-
 local function emit_if_statement(ctx, stmt)
   if stmt.else_statement then
     local lab1 = new_label(ctx)
@@ -1158,17 +1790,6 @@ local function emit_if_statement(ctx, stmt)
   end
 end
 
-local function dup_scope(scope)
-  local new_scope = { }
-  -- Inerit access to all of this scope's local variables
-  if scope then
-    for k,v in pairs(scope) do
-      new_scope[k] = scope[k]
-    end
-  end
-  return new_scope
-end
-
 local function emit_block_statement(ctx, stmt)
   local stack = ctx.scope_stack
   -- Save stack index at new scope entry
@@ -1180,13 +1801,12 @@ local function emit_block_statement(ctx, stmt)
   for i,stmt in ipairs(stmt) do
     emit_statement(ctx, stmt)
   end
-  -- Pop pushed variables
+  -- Pop any pushed variables
   if ctx.stack_index < entry_stack_index then
-    emit(ctx, 'add $'..(entry_stack_index - ctx.stack_index)..', %rsp')
     -- Revert stack index
+    emit(ctx, 'add $'..(entry_stack_index - ctx.stack_index)..', %rsp')
     ctx.stack_index = entry_stack_index
   end
-  pprint(scope)
   table.remove(stack)
 end
 
@@ -1202,6 +1822,7 @@ emit_statement = function(ctx, stmt)
   elseif stmt.type == 'assign' then
     local stack = ctx.scope_stack
     local scope = stack[#stack]
+    -- Verify this variable is in scope
     local index = scope[stmt.name]
     if index then
       emit_expression(ctx, stmt.expression)
@@ -1212,26 +1833,35 @@ emit_statement = function(ctx, stmt)
   elseif stmt.type == 'local' then
     local stack = ctx.scope_stack
     local scope = stack[#stack]
+    -- Verify this variable is not in scope
     local index = scope[stmt.name]
     if index then
       error('`'..stmt.name..'` has already been declared in this scope.');
     end
+    -- Record the stack index of this new declaration
     scope[stmt.name] = ctx.stack_index
+    -- The stack will grow after this operation
     ctx.stack_index = ctx.stack_index - 8
+    -- Emit stack allocation
     emit(ctx, 'mov $0, %rax')
     emit(ctx, 'push %rax')
   elseif stmt.type == 'if' then
     emit_if_statement(ctx, stmt)
   elseif stmt.type == 'block' then
     emit_block_statement(ctx, stmt)
+  elseif stmt.type == 'call' then
+    -- Compute absolute function name path 
+    -- HACK ALERT: Labels need to be resolved before code generation!
+    local symbol = table.concat(ctx.module.name_path, '$')..'$'..table.concat(stmt.name_path)
+    emit(ctx, 'call '..symbol)
   else
-    io.write('Unknown statement type `'..stmt.type..'`\n')
+    io.write('Unknown AST statement type `'..stmt.type..'`\n')
     os.exit(4)
   end
 end
 
-local function emit_function(ctx, module, func)
-  symbol = symbol_name(module.name_path, func.name)
+local function emit_function(ctx, func)
+  symbol = symbol_name(ctx.module.name_path, func.name)
   -- Write header
   emit(ctx, '.globl '..symbol)
   emit(ctx, '.type '..symbol..', @function')
@@ -1252,6 +1882,7 @@ local function compile(ast, outfile)
     stack_index = -8,
     scope_stack = { },
     outfile = outfile,
+    module = nil,
   }
 
   emit(ctx, '.text')
@@ -1274,9 +1905,10 @@ local function compile(ast, outfile)
     if fdecl.type == 'module' then
       local module = fdecl
       for i,mdecl in ipairs(module.declarations) do
+        ctx.module = module
         if mdecl.type == 'function' then
           local func = mdecl
-          emit_function(ctx, module, func)
+          emit_function(ctx, func)
         end
       end
     end
@@ -1336,6 +1968,10 @@ local ast = parse_file(file_in)
 
 io.write('--------------------------------------------------------------------------------\n')
 ast_dump(ast)
+io.write('--------------------------------------------------------------------------------\n')
+ir = compile_ir(ast)
+io.write('--------------------------------------------------------------------------------\n')
+ir_dump(ir)
 io.write('--------------------------------------------------------------------------------\n')
 
 compile(ast, file_out)

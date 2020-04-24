@@ -1,0 +1,33 @@
+
+string my_string = 'bla';
+
+vector<int> some_vec;
+append(some_vec, local_b);
+prepend(some_vec, local_b);
+
+map<string, int> some_map;
+insert(some_map, my_string, 5);
+remove(some_map, my_string);
+
+// Why should for loops be custom-iterator friendly?
+// The only time iteration is difficult is when iterating a complex data structure. Writing an iterator is an
+// overinvolved, Shiny New Solution (TM) for anything else!
+// Also, complex iteration deserves the clarity of being written out explicitly otherwise.
+// Since data structures are provided by the language, there's no reason to have support for iterators.
+// In conclusion, pairs/ipairs/... need not point to any actual memory; they're allowed to be abstract builtins,
+// like sizeof.
+// Finally, whether pairs or ipairs is used is completely dependent on the data structure being considered.
+// Therefore, the actual looping strategy is inferred from context.
+
+for(int i in some_vec) {
+  // I  happy
+}
+for(string k, int v in some_map) {
+  // Am with
+}
+for(int i = 0, size(some_vec)) {
+  // So this
+}
+
+some_map["bla"];
+

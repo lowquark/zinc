@@ -1,0 +1,68 @@
+
+struct Shirt {
+  int id;
+}
+
+struct Child {
+  int a;
+  int b;
+  int c;
+  Shirt shirt;
+
+  access home;
+}
+
+struct MyStruct {
+  Child child;
+
+  access home;
+}
+
+module home {
+  function feed_child (Child child) {
+    // Yum
+    child.a = 10;
+    child.b = 10;
+    child.c = 10;
+  }
+
+  function identify_child (const Child child) -> int {
+    // Which child are you
+    return child.shirt.id;
+  }
+
+  function find_child (MyStruct ms) -> Child {
+    // I found your child
+    return ms.child;
+  }
+}
+
+module main {
+  function main() {
+    // Declare a MyStruct, noting that we do not have access to its fields.
+    MyStruct ms;
+
+    // Ok - The approved interface returns a non-const reference. Whatever.
+    Child child_x = find_child(ms);
+    // Ok - We can always get a const reference.
+    const Child child_y = ms.child;
+
+    // Ok - child_x is not const.
+    home:feed_child(child_x);
+    // Not ok - child_y is const and hence cannot bind to non-const.
+    home:feed_child(child_y);
+
+    // Ok - Non-const may bind to const.
+    home:identify_child(child_x);
+    // Ok - identify_child expects const anyway.
+    home:identify_child(child_y);
+
+    // Not ok - We have no access to the contents of a Child, const or not.
+    child_x.shirt = -1;
+    child_y.shirt = -7;
+
+    // To summarize, fields of a struct are available to all as const references.
+    // If the struct is non-const, and we are in a module with access to its fields, they are available as non-const.
+  }
+}
+
