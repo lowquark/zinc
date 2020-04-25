@@ -16,7 +16,7 @@ module my_module {
   int var_b;
 
   function bla() {
-    return 1 || 1;
+    return 1/2 + 1;
   }
 
   function func1() {
@@ -24,18 +24,11 @@ module my_module {
     int local_b;
     int local_c;
 
-    local_a = 11 * 2 + 3 * 4;
-    local_b = 13;
+    local_a = (11*1)+(0*1);
+    local_b = 2;
     local_c = -9;
 
-    bla(some_ref + 54, local_b, local_c);
-
     if(local_c == -9) {
-      int local_d;
-      local_a = 0;
-      local_b = 1;
-      local_c = 2;
-      local_d = 3;
     } else if(local_b == 13) {
       int local_d;
       local_c = 1000;

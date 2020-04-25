@@ -1157,8 +1157,8 @@ end
 local function stackreg(ctx, name)
   local abs_index = ctx.local_scope[name]
   if abs_index then
-    local rel_index = ctx.local_scope[name] - ctx.local_index_block
-    return 's['..rel_index..']'
+    local rel_index = ctx.local_scope[name]
+    return 's'..rel_index
   else
     error('`'..name..'` was not found in this scope.')
   end
@@ -1167,7 +1167,7 @@ end
 local function newlabel(ctx)
   local idx = ctx.label_index
   ctx.label_index = ctx.label_index + 1
-  return '_l'..idx
+  return 'l'..idx
 end
 
 local function ir_emit(ctx, ir_stmt)
@@ -1365,7 +1365,6 @@ end
 
 ir_est['local'] = function(ctx, ast_stmt)
   io.write('local `'..ast_stmt.name..'` is at index '..ctx.local_index..'\n')
-  io.write('its block is at index '..ctx.local_index_block..'\n')
   ctx.local_scope[ast_stmt.name] = ctx.local_index
   ctx.local_index = ctx.local_index + 1
 end
@@ -1386,7 +1385,7 @@ function ir_est.assign(ctx, ast_stmt)
   ir_emit(ctx, ir_mov(stackreg(ctx, ast_stmt.name), reg))
 end
 
-function ir_est.block(ctx, ast_stmt)
+function ir_est.block(ctx, ast_stmt, top_level_block)
   -- Calculate total stack space required by this block
   local stack_size = 0
   for i,ast_substmt in ipairs(ast_stmt) do
@@ -1404,11 +1403,9 @@ function ir_est.block(ctx, ast_stmt)
   if stack_size ~= 0 then
     ir_emit(ctx, ir_salloc(stack_size))
 
-    local_index_block_prev = ctx.local_index_block
     local_index_prev = ctx.local_index
     local_scope_prev = ctx.local_scope
 
-    ctx.local_index_block = ctx.local_index
     ctx.local_scope = dupscope(ctx.local_scope)
   end
 
@@ -1416,10 +1413,9 @@ function ir_est.block(ctx, ast_stmt)
     ir_emit_statement(ctx, ast_substmt)
   end
 
-  if stack_size ~= 0 then
+  if not top_level_block and stack_size ~= 0 then
     ir_emit(ctx, ir_sfree(stack_size))
 
-    ctx.local_index_block = local_index_block_prev
     ctx.local_index = local_index_prev
     ctx.local_scope = local_scope_prev
   end
@@ -1429,12 +1425,12 @@ function ir_est.call(ctx, ast_stmt)
   -- THE BIG TODO
 end
 
-ir_emit_statement = function(ctx, ast_stmt)
+ir_emit_statement = function(ctx, ast_stmt, ...)
   -- All temporary registers are free game at the beginning of a statement
   cleartemps(ctx)
   local h = ir_est[ast_stmt.type]
   if h then
-    h(ctx, ast_stmt)
+    h(ctx, ast_stmt, ...)
   else
     error('Unknown AST statement type `'..ast_stmt.type..'`')
   end
@@ -1448,7 +1444,6 @@ local function ir_subroutine(ast_module_name_path, ast_func)
   ctx = {
     local_scope = { },
     statements = statements,
-    local_index_block = 0,
     local_index = 0,
     -- Counter / high water mark for the temp stack
     temp_index = 0,
@@ -1457,7 +1452,8 @@ local function ir_subroutine(ast_module_name_path, ast_func)
     label_index = 0,
   }
 
-  ir_emit_statement(ctx, ast_func.block)
+  assert(ast_func.block.type == 'block')
+  ir_est.block(ctx, ast_func.block, true)
 
   return {
     type = 'subroutine',
@@ -1491,10 +1487,10 @@ end
 -- IR (d)ump (s)tatement (t)able
 local ir_dst = {}
 
-ir_dst['salloc'] = function(stmt)
+function ir_dst.salloc(stmt)
   io.write('  salloc '..stmt.size..'\n')
 end
-ir_dst['sfree'] = function(stmt)
+function ir_dst.sfree(stmt)
   io.write('  sfree '..stmt.size..'\n')
 end
 
@@ -1625,16 +1621,6 @@ end
 -- Code Generation
 --------------------------------------------------------------------------------
 
-local function symbol_name(module_path, name)
-  return table.concat(module_path, '$')..'$'..name
-end
-
-local function new_label(ctx)
-  local a = ctx.label_id
-  ctx.label_id = a + 1
-  return '_l'..a
-end
-
 local function emit(ctx, instr)
   ctx.outfile:write('\t'..instr..'\n')
 end
@@ -1651,347 +1637,366 @@ local function emit_line(ctx)
   ctx.outfile:write('\n')
 end
 
-local function dup_scope(scope)
-  local new_scope = { }
-  -- Inerit access to all of this scope's local variables
-  if scope then
-    for k,v in pairs(scope) do
-      new_scope[k] = scope[k]
-    end
-  end
-  return new_scope
-end
-
-local emit_statement
-local emit_expression
-
--- The (e)mit (e)xpression (t)able
-local eet = {}
-
-function eet.integer(ctx, expr)
-  emit(ctx, 'mov $'..expr.value..', %rax')
-end
-
-function eet.negate(ctx, expr)
-  emit_expression(ctx, expr.expression)
-  emit(ctx, 'neg %rax')
-end
-
-function eet.binnot(ctx, expr)
-  emit_expression(ctx, expr.expression)
-  emit(ctx, 'not %rax')
-end
-
-function eet.lognot(ctx, expr)
-  emit_expression(ctx, expr.expression)
-  emit(ctx, 'cmp $0, %rax')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'sete %al')
-end
-
-function eet.add(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'addq %rcx, %rax')
-end
-
-function eet.sub(ctx, expr)
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'subq %rcx, %rax')
-end
-
-function eet.mul(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'imul %rcx, %rax')
-end
-
-function eet.div(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'mov %rax, %rcx')
-  emit(ctx, 'pop %rax')
-  emit(ctx, 'cqto')
-  emit(ctx, 'idivq %rcx')
-end
-
-function eet.cmpeq(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'cmp %rax, %rcx')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'sete %al')
-end
-
-function eet.cmpneq(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'cmp %rax, %rcx')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'setne %al')
-end
-
-function eet.cmplt(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'cmp %rax, %rcx')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'setl %al')
-end
-
-function eet.cmpgt(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'cmp %rax, %rcx')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'setg %al')
-end
-
-function eet.cmpleq(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'cmp %rax, %rcx')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'setle %al')
-end
-
-function eet.cmpgeq(ctx, expr)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'push %rax')
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'pop %rcx')
-  emit(ctx, 'cmp %rax, %rcx')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'setge %al')
-end
-
-function eet.logand(ctx, expr)
-  local lab1 = new_label(ctx)
-  local lab2 = new_label(ctx)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'cmp $0, %rax')
-  emit(ctx, 'jne '..lab1)
-  emit(ctx, 'jmp '..lab2)
-  emit_label(ctx, lab1)
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'cmp $0, %rax')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'setne %al')
-  emit_label(ctx, lab2)
-end
-
-function eet.logor(ctx, expr)
-  local lab1 = new_label(ctx)
-  local lab2 = new_label(ctx)
-  emit_expression(ctx, expr.expression_a)
-  emit(ctx, 'cmp $0, %rax')
-  emit(ctx, 'je '..lab1..'')
-  emit(ctx, 'mov $1, %rax')
-  emit(ctx, 'jmp '..lab2..'')
-  emit_label(ctx, lab1)
-  emit_expression(ctx, expr.expression_b)
-  emit(ctx, 'cmp $0, %rax')
-  emit(ctx, 'mov $0, %rax')
-  emit(ctx, 'setne %al')
-  emit_label(ctx, lab2)
-end
-
-function eet.variable(ctx, expr)
-  local scope = ctx.scope_stack[#ctx.scope_stack]
-  local index = scope[expr.name]
-  if index then
-    emit(ctx, 'mov '..index..'(%rbp), %rax')
-  else
-    error('`'..expr.name..'` was not found in this scope.')
-  end
-end
-
-emit_expression = function(ctx, expr)
-  local h = eet[expr.type]
-  if h then
-    h(ctx, expr)
-  else
-    io.write('Unknown expression type `'..expr.type..'`\n')
-    os.exit(4)
-  end
-end
-
 local function emit_prologue(ctx)
   emit(ctx, 'push %rbp')
-  emit(ctx, 'mov %rsp, %rbp')
+  emit(ctx, 'mov  %rsp, %rbp')
 end
 
 local function emit_epilogue(ctx)
-  emit(ctx, 'mov %rbp, %rsp')
-  emit(ctx, 'pop %rbp')
+  emit(ctx, 'mov  %rbp, %rsp')
+  emit(ctx, 'pop  %rbp')
   emit(ctx, 'ret')
 end
 
-local function emit_if_statement(ctx, stmt)
-  if stmt.else_statement then
-    local lab1 = new_label(ctx)
-    local lab2 = new_label(ctx)
-    emit_expression(ctx, stmt.expression)
-    emit(ctx, 'cmp $0, %rax')
-    emit(ctx, 'je '..lab1..'')
-    emit(ctx, '/* if block */')
-    emit_statement(ctx, stmt.if_statement)
-    emit(ctx, 'jmp '..lab2..'')
-    emit_label(ctx, lab1)
-    emit(ctx, '/* else block */')
-    emit_statement(ctx, stmt.else_statement)
-    emit_label(ctx, lab2)
+-- (o)perand (t)emporary (r)egister (t)able
+local otrt = {
+  '%rax',
+  '%rcx',
+  '%rdx',
+  '%r8',
+  '%r9',
+  '%r10',
+  '%r11',
+}
+
+local function operand(ctx, name)
+  local typestr = string.sub(name, 1, 1)
+  if typestr == 'r' then
+    -- Temporary access
+    local index = string.match(name, 'r(%d+)')
+    if not index then
+      error('Invalid IR register `'..name..'`')
+    end
+    index = tonumber(index)
+    if index > ctx.temp_count then
+      error('Invalid IR temp register `'..name..'` exceeds maximum of `'..ctx.temp_count..'`')
+    end
+    local op = otrt[index+1]
+    if op then
+      return op, 'register'
+    else
+      return tostring(-8*(index-1))..'(%rbp)', 'memory'
+    end
+  elseif typestr == 's' then
+    -- Stack access
+    local index = string.match(name, 's(%d+)')
+    if not index then
+      error('Invalid IR stack register `'..name..'`')
+    end
+    index = tonumber(index)
+    return tostring(-8*(ctx.temp_count+index-1))..'(%rbp)', 'memory'
   else
-    local lab1 = new_label(ctx)
-    emit_expression(ctx, stmt.expression)
-    emit(ctx, 'cmp $0, %rax')
-    emit(ctx, 'je '..lab1..'')
-    emit(ctx, '/* if block */')
-    emit_statement(ctx, stmt.if_statement)
-    emit_label(ctx, lab1)
+    local integer = tonumber(name)
+    if not integer then
+      error('Failed to generate operand for `'..name..'`')
+    end
+    return '$'..integer, 'literal'
   end
 end
 
-local function emit_block_statement(ctx, stmt)
-  local stack = ctx.scope_stack
-  -- Save stack index at new scope entry
-  local entry_stack_index = ctx.stack_index
-  -- Push a duplicate scope onto the scope stack
-  local scope = dup_scope(stack[#stack])
-  table.insert(stack, scope)
-  -- Emit statements in this block
-  for i,stmt in ipairs(stmt) do
-    emit_statement(ctx, stmt)
+-- These registers must be preserved:
+--   %rbx
+--   %rbp
+--   %r12
+--   %r13
+--   %r14
+--   %r15
+-- These registers are fair game for our function
+local rbft = {
+  ['%rax'] = '%al',
+  ['%rcx'] = '%cl',
+  ['%rdx'] = '%dl',
+  ['%r8'] = '%r8b',
+  ['%r9'] = '%r9b',
+  ['%r10'] = '%r10b',
+  ['%r11'] = '%r11b',
+}
+
+local function reg_byte_form(op, type)
+  if type == 'register' then
+    local r = rbft[op]
+    if not r then
+      error('Register byte form for `'..op..'` not yet set')
+    end
+    return r
   end
-  -- Pop any pushed variables
-  if ctx.stack_index < entry_stack_index then
-    -- Revert stack index
-    emit(ctx, 'add $'..(entry_stack_index - ctx.stack_index)..', %rsp')
-    ctx.stack_index = entry_stack_index
-  end
-  table.remove(stack)
+  -- hmmm, since we're LSB first this should still work for memory addresses
+  return op
 end
 
-emit_statement = function(ctx, stmt)
-  if stmt.type == 'return' then
-    if stmt.expression then
-      emit_expression(ctx, stmt.expression)
-      emit_epilogue(ctx)
-    else
-      emit(ctx, 'mov $0, %rax')
-      emit_epilogue(ctx)
-    end
-  elseif stmt.type == 'assign' then
-    local stack = ctx.scope_stack
-    local scope = stack[#stack]
-    -- Verify this variable is in scope
-    local index = scope[stmt.name]
-    if index then
-      emit_expression(ctx, stmt.expression)
-      emit(ctx, 'mov %rax, '..index..'(%rbp)')
-    else
-      error('`'..stmt.name..'` was not found in this scope.')
-    end
-  elseif stmt.type == 'local' then
-    local stack = ctx.scope_stack
-    local scope = stack[#stack]
-    -- Verify this variable is not in scope
-    local index = scope[stmt.name]
-    if index then
-      error('`'..stmt.name..'` has already been declared in this scope.');
-    end
-    -- Record the stack index of this new declaration
-    scope[stmt.name] = ctx.stack_index
-    -- The stack will grow after this operation
-    ctx.stack_index = ctx.stack_index - 8
-    -- Emit stack allocation
-    emit(ctx, 'mov $0, %rax')
+local function emit_mov(ctx, op_x, type_x, op_z, type_z)
+  -- Destination can't be a literal, that doesn't make any damn sense
+  if type_z == 'literal' then error('Invalid instruction') end
+  -- Optimize out useless moves
+  if op_x == op_z then return end
+  -- Move if possible
+  if type_x == 'register' or type_z == 'register' then
+    -- If either is a register, only one memory reference is possible
+    emit(ctx, 'mov  '..op_x..', '..op_z)
+  else
     emit(ctx, 'push %rax')
-  elseif stmt.type == 'if' then
-    emit_if_statement(ctx, stmt)
-  elseif stmt.type == 'block' then
-    emit_block_statement(ctx, stmt)
-  elseif stmt.type == 'call' then
-    -- Compute absolute function name path 
-    -- HACK ALERT: Labels need to be resolved before code generation!
-    local symbol = table.concat(ctx.module.name_path, '$')..'$'..table.concat(stmt.name_path)
-    emit(ctx, 'call '..symbol)
-  else
-    io.write('Unknown AST statement type `'..stmt.type..'`\n')
-    os.exit(4)
+    emit(ctx, 'mov  '..op_x..', %rax')
+    emit(ctx, 'mov  %rax, '..op_z)
+    emit(ctx, 'pop  %rax')
   end
 end
 
-local function emit_function(ctx, func)
-  symbol = symbol_name(ctx.module.name_path, func.name)
-  -- Write header
-  emit(ctx, '.globl '..symbol)
-  emit(ctx, '.type '..symbol..', @function')
-  emit_label(ctx, symbol)
-  emit_prologue(ctx)
-  -- Write statements (block)
-  ctx.stack_index = -8
-  emit_statement(ctx, func.block)
-  -- Write footer
-  emit(ctx, 'mov $0, %rax')
-  emit_epilogue(ctx)
-  emit_noindent(ctx, '')
+local function emit_binary_arith_op(ctx, instr, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_y, type_y = operand(ctx, ir_stmt.register_y)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  -- Destination can't be a literal, that doesn't make any damn sense
+  if type_z == 'literal' then error('Invalid instruction') end
+  if type_z == 'register' then
+    -- op_z is a register, so only a single memory reference is possible here
+    emit(ctx, 'mov  '..op_x..', '..op_z)
+    emit(ctx, instr..' '..op_y..', '..op_z)
+  else
+    -- Have to push something otherwise
+    emit(ctx, 'push %rax')
+    emit(ctx, 'mov  '..op_x..', %rax')
+    emit(ctx, instr..' '..op_y..', %rax')
+    emit(ctx, 'mov  %rax, '..op_z)
+    emit(ctx, 'pop  %rax')
+  end
 end
 
-local function compile(ast, outfile)
+local function emit_comparison(ctx, set_instr, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_y, type_y = operand(ctx, ir_stmt.register_y)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  -- Destination can't be a literal, that doesn't make any damn sense
+  if type_z == 'literal' then error('Invalid instruction') end
+  if type_x == 'register' or type_z == 'register' then
+    -- Either is a register, so only a single memory reference is possible here
+    emit(ctx, 'cmp  '..op_x..', '..op_y)
+  else
+    -- Have to push something otherwise
+    emit(ctx, 'push %rax')
+    emit(ctx, 'mov  '..op_x..', %rax')
+    emit(ctx, 'cmp  %rax, '..op_y)
+    emit(ctx, 'pop  %rax')
+  end
+  -- Clear result and set based on condition
+  emit(ctx, 'mov  $0, '..op_z)
+  emit(ctx, set_instr..' '..reg_byte_form(op_z, type_z))
+end
+
+local function emit_jump_comparison(ctx, jump_instr, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_y, type_y = operand(ctx, ir_stmt.register_y)
+  -- Destination can't be a literal, that doesn't make any damn sense
+  if type_x == 'literal' and type_y == 'literal' then error('Invalid instruction') end
+  if type_x == 'register' or type_z == 'register' then
+    -- Either is a register, so only a single memory reference is possible here
+    emit(ctx, 'cmp  '..op_x..', '..op_y)
+  else
+    -- Have to push something otherwise
+    emit(ctx, 'push %rax')
+    emit(ctx, 'mov  '..op_x..', %rax')
+    emit(ctx, 'cmp  %rax, '..op_y)
+    emit(ctx, 'pop  %rax')
+  end
+  -- Jump based on condition
+  emit(ctx, jump_instr..' '..convert_label(ctx, ir_stmt.label_name))
+end
+
+local function convert_label(ctx, ir_name)
+  return '_s'..ctx.subroutine_id..ir_name
+end
+
+-- (e)mit (s)tatement (t)able
+local est = {}
+
+function est.salloc(ctx, ir_stmt)
+  -- Allocate by subtracting from %rsp
+  emit(ctx, 'sub  $'..(ir_stmt.size*8)..', %rsp')
+end
+function est.sfree(ctx, ir_stmt)
+  -- Deallocate by adding to %rsp
+  emit(ctx, 'add  $'..(ir_stmt.size*8)..', %rsp')
+end
+
+function est.mov(ctx, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  emit_mov(ctx, op_x, type_x, op_z, type_z)
+end
+
+function est.neg(ctx, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  emit_mov(ctx, op_x, type_x, op_z, type_z)
+  emit(ctx, 'negq '..op_z)
+end
+function est.bnot(ctx, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  emit_mov(ctx, op_x, type_x, op_z, type_z)
+  emit(ctx, 'notq '..op_z)
+end
+function est.lnot(ctx, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  emit_mov(ctx, op_x, type_x, op_z, type_z)
+  emit(ctx, 'cmp  $0, '..op_z)
+  emit(ctx, 'mov  $0, '..op_z)
+  emit(ctx, 'sete '..reg_byte_form(op_z, type_z))
+end
+
+function est.add(ctx, ir_stmt)
+  emit_binary_arith_op(ctx, 'addq', ir_stmt)
+end
+function est.sub(ctx, ir_stmt)
+  emit_binary_arith_op(ctx, 'subq', ir_stmt)
+end
+function est.mul(ctx, ir_stmt)
+  emit_binary_arith_op(ctx, 'imul', ir_stmt)
+end
+function est.div(ctx, ir_stmt)
+  -- This implementation is most efficient if op_x and op_z are both r0; hence, if division is the
+  -- first element of its statement.
+  -- Though, it's pretty marginal compared to how many cycles integer division itself takes.
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_y, type_y = operand(ctx, ir_stmt.register_y)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  if type_z == 'literal' then error('Invalid instruction') end
+  -- Backup %rax,%rdx if applicable
+  -- This backup flow control has an interesting pattern. We only push registers that would be
+  -- clobbered, and aren't the destination.
+  if op_z ~= '%rax' then
+    emit(ctx, 'push %rax')
+  end
+  if op_z ~= '%rdx' then
+    emit(ctx, 'push %rdx')
+  end
+  -- Place our dividend in %rax
+  if op_x ~= '%rax' then
+    emit(ctx, 'mov  '..op_x..', %rax')
+  end
+  -- Sign extend %rax into %rdx.
+  -- This clobbers %rdx, and kills the crab.
+  emit(ctx, 'cqto')
+  -- Divide [%rdx:%rax] by the divisor (op_y)
+  emit(ctx, 'idivq '..op_y)
+  -- Move the quotient into our destination (op_z)
+  if op_z ~= '%rax' then
+    emit(ctx, 'mov  %rax, '..op_z)
+  end
+  -- Restore %rax,%rdx if applicable
+  if op_z ~= '%rdx' then
+    emit(ctx, 'pop  %rdx')
+  end
+  if op_z ~= '%rax' then
+    emit(ctx, 'pop  %rax')
+  end
+end
+
+function est.eq(ctx, ir_stmt)
+  emit_comparison(ctx, 'sete', ir_stmt)
+end
+function est.neq(ctx, ir_stmt)
+  emit_comparison(ctx, 'setne', ir_stmt)
+end
+function est.lt(ctx, ir_stmt)
+  emit_comparison(ctx, 'setl', ir_stmt)
+end
+function est.gt(ctx, ir_stmt)
+  emit_comparison(ctx, 'setg', ir_stmt)
+end
+function est.leq(ctx, ir_stmt)
+  emit_comparison(ctx, 'setle', ir_stmt)
+end
+function est.geq(ctx, ir_stmt)
+  emit_comparison(ctx, 'setge', ir_stmt)
+end
+
+function est.call(ctx, ir_stmt)
+  io.write('  call '..ir_stmt.name..'\n')
+end
+function est.ret(ctx, ir_stmt)
+  emit_epilogue(ctx)
+end
+
+function est.label(ctx, ir_stmt)
+  emit_label(ctx, convert_label(ctx, ir_stmt.name))
+end
+function est.jmp(ctx, ir_stmt)
+  emit(ctx, 'jmp '..convert_label(ctx, ir_stmt.label_name))
+end
+function est.jz(ctx, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register)
+  if type_x == 'literal' then error('Invalid instruction') end
+  emit(ctx, 'cmp $0, '..op_x)
+  emit(ctx, 'je '..convert_label(ctx, ir_stmt.label_name))
+end
+function est.jnz(ctx, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register)
+  if type_x == 'literal' then error('Invalid instruction') end
+  emit(ctx, 'cmp $0, '..op_x)
+  emit(ctx, 'jne '..convert_label(ctx, ir_stmt.label_name))
+end
+function est.jeq(ctx, ir_stmt)
+  emit_jump_comparison(ctx, 'je', ir_stmt)
+end
+function est.jneq(ctx, ir_stmt)
+  emit_jump_comparison(ctx, 'jne', ir_stmt)
+end
+function est.jlt(ctx, ir_stmt)
+  emit_jump_comparison(ctx, 'jl', ir_stmt)
+end
+function est.jgt(ctx, ir_stmt)
+  emit_jump_comparison(ctx, 'jg', ir_stmt)
+end
+function est.jleq(ctx, ir_stmt)
+  emit_jump_comparison(ctx, 'jle', ir_stmt)
+end
+function est.jgeq(ctx, ir_stmt)
+  emit_jump_comparison(ctx, 'jge', ir_stmt)
+end
+
+function emit_statement(ctx, ir_stmt)
+  local h = est[ir_stmt.type]
+  if h then
+    h(ctx, ir_stmt)
+  else
+    error('Unknown IR statement type `'..ir_stmt.type..'`')
+  end
+end
+
+local function emit_subroutine(ctx, ir_subr)
+  -- Emit header
+  emit(ctx, '.globl '..ir_subr.name)
+  emit(ctx, '.type '..ir_subr.name..', @function')
+  emit_label(ctx, ir_subr.name)
+  emit_prologue(ctx)
+  ctx.temp_count = math.max(ir_subr.meta.temp_count, 2)
+  -- Emit statements
+  for i,ir_stmt in ipairs(ir_subr.statements) do
+    emit_statement(ctx, ir_stmt)
+  end
+  -- Emit default footer if the subroutine didn't already include one
+  local last_ir_stmt = ir_subr.statements[#ir_subr.statements]
+  if last_ir_stmt.type ~= 'ret' then
+    emit('mov $0, %rax')
+    emit_epilogue(ctx)
+  end
+end
+
+local function generate(ir, outfile)
   local ctx = {
-    label_id = 0,
-    stack_index = -8,
-    scope_stack = { },
     outfile = outfile,
-    module = nil,
+    subroutine_id = 0,
+    temp_count = nil,
   }
 
   emit(ctx, '.text')
-
-  for i,v in ipairs(ast) do
-    if v.type == 'module' then
-      local module = v
-      for i,v in ipairs(v.declarations) do
-        if v.type == 'member' then
-          local var = v
-          emit(ctx, '.comm '..symbol_name(module.name_path, var.name)..',8,8')
-        end
-      end
-    end
-  end
-
   emit_line(ctx)
 
-  for i,fdecl in ipairs(ast) do
-    if fdecl.type == 'module' then
-      local module = fdecl
-      for i,mdecl in ipairs(module.declarations) do
-        ctx.module = module
-        if mdecl.type == 'function' then
-          local func = mdecl
-          emit_function(ctx, func)
-        end
-      end
-    end
+  for i,ir_subr in ipairs(ir.subroutines) do
+    emit_subroutine(ctx, ir_subr)
+    emit_line(ctx)
+    ctx.subroutine_id = ctx.subroutine_id + 1
   end
 
   emit(ctx, '.globl main')
@@ -2054,5 +2059,5 @@ io.write('----------------------------------------------------------------------
 ir_dump(ir)
 io.write('--------------------------------------------------------------------------------\n')
 
-compile(ast, file_out)
+generate(ir, file_out)
 
