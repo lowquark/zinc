@@ -99,8 +99,8 @@ end
 local function ast_member_declaration(type_name_path, name)
   return { type = 'member', type_name_path = type_name_path, name = name }
 end
-local function ast_function_declaration(name, block)
-  return { type = 'function', name = name, block = block }
+local function ast_function_declaration(name, arguments, block)
+  return { type = 'function', name = name, arguments = arguments, block = block }
 end
 
 -- File-scope declarations: struct | module
@@ -172,7 +172,13 @@ function ast_dump_module_decl(decl, level)
   local level = level or 0
   local indent = string.rep('  ', level)
   if decl.type == 'function' then
-    io.write(indent..'FUNCTION '..decl.name..'\n')
+    io.write(indent..'FUNCTION '..decl.name..' ( ')
+    for i,arg in ipairs(decl.arguments) do
+      io.write(arg.name..':'..table.concat(arg.type_name_path,':')..' ')
+    end
+    io.write(') -> ( ')
+    -- ...
+    io.write(')\n')
     ast_dump_stmt(decl.block, level + 1)
   elseif decl.type == 'member' then
     io.write(indent..'MEMBER '..decl.name..' : '..table.concat(decl.type_name_path,':')..'\n')
@@ -429,6 +435,7 @@ Full parser grammar, in extended BNF:
 <expression> := <expression-p6>
 
 <argument-list> := <expression> { ',' <expression> }
+<argument-declaration-list> := <name-path> <name> { ',' <name-path> <name> }
 
 <if-body> := 'if' '(' <expression> ')' <block>
 <else-body> := 'else' ( <if-body> [ <else-body> ] | <block> )
@@ -865,13 +872,31 @@ end
 -- Parses: [ <argument-list> ]
 -- Returns the AST object for an argument list
 -- Returns an empty list if no expressions could be read
-local function parse_optional_argument_list(L)
+local function parse_argument_list(L)
   local list = {}
   local expr = parse_expression(L)
   if expr then
     table.insert(list, expr)
     while parse_token(L, 'comma') do
       table.insert(list, expect_expression(L))
+    end
+  end
+  return list
+end
+
+-- Parses: [ <argument-declaration-list> ]
+-- Returns the AST object for a argument declaration list
+-- Returns an empty list if no declarations could be read
+local function parse_argument_declaration_list(L)
+  local list = {}
+  local name_path = parse_name_path(L)
+  if name_path then
+    local name = expect_name(L)
+    table.insert(list, { type_name_path = name_path, name = name })
+    while parse_token(L, 'comma') do
+      local name_path = expect_name_path(L)
+      local name = expect_name(L)
+      table.insert(list, { type_name_path = name_path, name = name })
     end
   end
   return list
@@ -913,7 +938,7 @@ expect_statement = function(L)
     -- Try to read an lparen
     if parse_token(L, 'lparen') then
       -- Read function call arg_list
-      local arg_list = parse_optional_argument_list(L)
+      local arg_list = parse_argument_list(L)
       expect_token(L, 'rparen')
       expect_token(L, 'semicolon')
       return ast_stmt_function_call(name_path, arg_list)
@@ -929,9 +954,10 @@ local function parse_function_declaration(L)
   if parse_token(L, 'function') then
     local name = expect_name(L)
     expect_token(L, 'lparen')
+    local arguments = parse_argument_declaration_list(L)
     expect_token(L, 'rparen')
     local block = parse_block(L)
-    return ast_function_declaration(name, block)
+    return ast_function_declaration(name, arguments, block)
   end
 end
 
@@ -1127,11 +1153,10 @@ local function cleartemps(ctx)
   ctx.temp_index = 0
 end
 
-local function stackreg(ctx, name)
-  local abs_index = ctx.local_scope[name]
-  if abs_index then
-    local rel_index = ctx.local_scope[name]
-    return 's'..rel_index
+local function findlocal(ctx, name)
+  local reg = ctx.local_scope[name]
+  if reg then
+    return reg
   else
     error('`'..name..'` was not found in this scope.')
   end
@@ -1297,7 +1322,7 @@ end
 
 function ir_eet.variable(ctx, expr)
   local reg = pushtemp(ctx)
-  ir_emit(ctx, ir_mov(reg, stackreg(ctx, expr.name)))
+  ir_emit(ctx, ir_mov(reg, findlocal(ctx, expr.name)))
   return reg
 end
 
@@ -1338,7 +1363,7 @@ end
 
 ir_est['local'] = function(ctx, ast_stmt)
   io.write('local `'..ast_stmt.name..'` is at index '..ctx.local_index..'\n')
-  ctx.local_scope[ast_stmt.name] = ctx.local_index
+  ctx.local_scope[ast_stmt.name] = 's'..ctx.local_index
   ctx.local_index = ctx.local_index + 1
 end
 
@@ -1355,7 +1380,7 @@ end
 
 function ir_est.assign(ctx, ast_stmt)
   local reg = ir_emit_expression(ctx, ast_stmt.expression)
-  ir_emit(ctx, ir_mov(stackreg(ctx, ast_stmt.name), reg))
+  ir_emit(ctx, ir_mov(findlocal(ctx, ast_stmt.name), reg))
 end
 
 function ir_est.block(ctx, ast_stmt)
@@ -1429,8 +1454,14 @@ local function ir_subroutine(ast_module_name_path, ast_func)
   local returns = { 'int' }
   local statements = { }
 
+  -- Populate initial scope with argument registers
+  local local_scope = { }
+  for k,ast_arg_decl in ipairs(ast_func.arguments) do
+    local_scope[ast_arg_decl.name] = 'i'..(k-1)
+  end
+
   ctx = {
-    local_scope = { },
+    local_scope = local_scope,
     statements = statements,
     local_index = 0,
     -- Counter / high water mark for the temp stack
@@ -1659,7 +1690,7 @@ local function operand(ctx, name)
     -- Temporary access
     local index = string.match(name, 'r(%d+)')
     if not index then
-      error('Invalid IR register `'..name..'`')
+      error('Invalid IR temporary register `'..name..'`')
     end
     index = tonumber(index)
     if index > ctx.temp_count then
@@ -1669,7 +1700,8 @@ local function operand(ctx, name)
     if op then
       return op, 'register'
     else
-      return tostring(-8*(index-1))..'(%rbp)', 'memory'
+      error('TODO: Implement spilling')
+      --return tostring(-8*(index-1))..'(%rbp)', 'memory'
     end
   elseif typestr == 's' then
     -- Stack access
@@ -1678,7 +1710,15 @@ local function operand(ctx, name)
       error('Invalid IR stack register `'..name..'`')
     end
     index = tonumber(index)
-    return tostring(-8*(ctx.temp_count+index-1))..'(%rbp)', 'memory'
+    return tostring(-8*(index+1))..'(%rbp)', 'memory'
+  elseif typestr == 'i' then
+    -- Stack access
+    local index = string.match(name, 'i(%d+)')
+    if not index then
+      error('Invalid IR input/output register `'..name..'`')
+    end
+    index = tonumber(index)
+    return tostring(8*(index+2))..'(%rbp)', 'memory'
   else
     local integer = tonumber(name)
     if not integer then
@@ -1748,7 +1788,7 @@ local function emit_binary_arith_op(ctx, instr, ir_stmt)
     end
     emit(ctx, instr..' '..op_y..', '..op_z)
   else
-    -- Have to push something otherwise
+    -- Have to push something otherwise, and destination must be a register
     emit(ctx, 'push %rax')
     emit(ctx, 'mov  '..op_x..', %rax')
     emit(ctx, instr..' '..op_y..', %rax')

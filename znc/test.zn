@@ -15,8 +15,8 @@ module my_module {
   int var_a;
   int var_b;
 
-  function bla() {
-    return 1/2 + 1;
+  function bla(int a, int b, int c) {
+    return a + b + c;
   }
 
   function func1() {
