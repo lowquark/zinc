@@ -28,6 +28,8 @@ module my_module {
     local_b = 2;
     local_c = -9;
 
+    bla(local_a, local_b, local_c);
+
     if(local_c == -9) {
     } else if(local_b == 13) {
       int local_d;

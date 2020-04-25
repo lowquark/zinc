@@ -11,95 +11,78 @@ local function ast_name_path()
 end
 
 -- Expressions: (The list is long)
-local function ast_expr_negate(subexpr)
-  return { type = 'negate', expression = subexpr }
-end
-
-local function ast_expr_binnot(subexpr)
-  return { type = 'binnot', expression = subexpr }
-end
-
-local function ast_expr_lognot(subexpr)
-  return { type = 'lognot', expression = subexpr }
-end
-
 local function ast_expr_integer(value)
   return { type = 'integer', value = value }
 end
-
 local function ast_expr_variable(name)
   return { type = 'variable', name = name }
 end
 
-local function ast_expr_mul(subexpr_a, subexpr_b)
-  return { type = 'mul', expression_a = subexpr_a, expression_b = subexpr_b }
+local function ast_expr_negate(subexpr)
+  return { type = 'negate', expression = subexpr }
 end
-
-local function ast_expr_div(subexpr_a, subexpr_b)
-  return { type = 'div', expression_a = subexpr_a, expression_b = subexpr_b }
+local function ast_expr_binnot(subexpr)
+  return { type = 'binnot', expression = subexpr }
+end
+local function ast_expr_lognot(subexpr)
+  return { type = 'lognot', expression = subexpr }
 end
 
 local function ast_expr_add(subexpr_a, subexpr_b)
   return { type = 'add', expression_a = subexpr_a, expression_b = subexpr_b }
 end
-
 local function ast_expr_sub(subexpr_a, subexpr_b)
   return { type = 'sub', expression_a = subexpr_a, expression_b = subexpr_b }
 end
-
-local function ast_expr_cmplt(subexpr_a, subexpr_b)
-  return { type = 'cmplt', expression_a = subexpr_a, expression_b = subexpr_b }
+local function ast_expr_mul(subexpr_a, subexpr_b)
+  return { type = 'mul', expression_a = subexpr_a, expression_b = subexpr_b }
 end
-
-local function ast_expr_cmpgt(subexpr_a, subexpr_b)
-  return { type = 'cmpgt', expression_a = subexpr_a, expression_b = subexpr_b }
-end
-
-local function ast_expr_cmpleq(subexpr_a, subexpr_b)
-  return { type = 'cmpleq', expression_a = subexpr_a, expression_b = subexpr_b }
-end
-
-local function ast_expr_cmpgeq(subexpr_a, subexpr_b)
-  return { type = 'cmpgeq', expression_a = subexpr_a, expression_b = subexpr_b }
+local function ast_expr_div(subexpr_a, subexpr_b)
+  return { type = 'div', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
 local function ast_expr_cmpeq(subexpr_a, subexpr_b)
   return { type = 'cmpeq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
-
 local function ast_expr_cmpneq(subexpr_a, subexpr_b)
   return { type = 'cmpneq', expression_a = subexpr_a, expression_b = subexpr_b }
+end
+local function ast_expr_cmplt(subexpr_a, subexpr_b)
+  return { type = 'cmplt', expression_a = subexpr_a, expression_b = subexpr_b }
+end
+local function ast_expr_cmpgt(subexpr_a, subexpr_b)
+  return { type = 'cmpgt', expression_a = subexpr_a, expression_b = subexpr_b }
+end
+local function ast_expr_cmpleq(subexpr_a, subexpr_b)
+  return { type = 'cmpleq', expression_a = subexpr_a, expression_b = subexpr_b }
+end
+local function ast_expr_cmpgeq(subexpr_a, subexpr_b)
+  return { type = 'cmpgeq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
 local function ast_expr_logand(subexpr_a, subexpr_b)
   return { type = 'logand', expression_a = subexpr_a, expression_b = subexpr_b }
 end
-
 local function ast_expr_logor(subexpr_a, subexpr_b)
   return { type = 'logor', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
--- Statements: local | block | if | return | assign | call
-local function ast_stmt_local_declaration(type_name_path, name)
-  return { type = 'local', type_name_path = type_name_path, name = name }
-end
-
+-- Statements: block | local | if | return | assign | call
 local function ast_stmt_block()
   return { type = 'block' }
 end
-
+local function ast_stmt_local_declaration(type_name_path, name)
+  return { type = 'local', type_name_path = type_name_path, name = name }
+end
 local function ast_stmt_if(expr, if_stmt, else_stmt)
   return { type = 'if', expression = expr, if_statement = if_stmt, else_statement = else_stmt }
 end
-
 local function ast_stmt_return(expr)
   return { type = 'return', expression = expr }
 end
-
 local function ast_stmt_assign(name, expr)
   return { type = 'assign', name = name, expression = expr }
 end
-
 local function ast_stmt_function_call(name_path, arg_list)
   return { type = 'call', name_path = name_path, argument_list = arg_list }
 end
@@ -108,7 +91,6 @@ end
 local function ast_struct_field_declaration(type_name_path, name)
   return { type = 'field', type_name_path = type_name_path, name = name }
 end
-
 local function ast_struct_access_declaration(module_name_path)
   return { type = 'access', name_path = module_name_path }
 end
@@ -117,7 +99,6 @@ end
 local function ast_member_declaration(type_name_path, name)
   return { type = 'member', type_name_path = type_name_path, name = name }
 end
-
 local function ast_function_declaration(name, block)
   return { type = 'function', name = name, block = block }
 end
@@ -126,7 +107,6 @@ end
 local function ast_struct_declaration(name_path, declarations)
   return { type = 'struct', name_path = name_path, declarations = declarations }
 end
-
 local function ast_module_declaration(name_path, declarations)
   return { type = 'module', name_path = name_path, declarations = declarations }
 end
@@ -539,8 +519,10 @@ local function parse_abort_expected(L, ...)
 end
 
 -- Unless otherwise specified,
---   > Functions of the form expect_xxxx throw an error if the next token is not valid to start rule xxxx.
---   > Functions of the form parse_xxxx return nil if the next token is not valid to start rule xxxx.
+--   * Functions of the form expect_xxxx throw an error if the next token is not valid to start rule
+--   xxxx.
+--   * Functions of the form parse_xxxx return nil if the next token is not valid to start rule
+--   xxxx.
 
 -- Tries to parse a token of the given type
 local function parse_token(L, type)
@@ -1016,13 +998,6 @@ end
 -- Intermediate Representation
 --------------------------------------------------------------------------------
 
-local function ir_salloc(size)
-  return { type = 'salloc', size = size }
-end
-local function ir_sfree(size)
-  return { type = 'sfree', size = size }
-end
-
 local function ir_mov(reg_z, reg_x)
   return { type = 'mov', register_z = reg_z, register_x = reg_x }
 end
@@ -1069,15 +1044,13 @@ local function ir_geq(reg_z, reg_x, reg_y)
   return { type = 'geq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 
--- Pushes a parameter onto the stack for use with call arguments
-local function ir_pusharg(reg)
-  return { type = 'pusharg', register = reg }
+local function ir_salloc(size)
+  return { type = 'salloc', size = size }
 end
--- Pops a parameter off of the call argument stack and copies it into the given register
-local function ir_poparg(reg)
-  return { type = 'poparg', register = reg }
+local function ir_sfree(size)
+  return { type = 'sfree', size = size }
 end
--- Calls a function. It will alter the call argument stack appropriately.
+
 local function ir_call(name)
   return { type = 'call', name = name }
 end
@@ -1385,7 +1358,7 @@ function ir_est.assign(ctx, ast_stmt)
   ir_emit(ctx, ir_mov(stackreg(ctx, ast_stmt.name), reg))
 end
 
-function ir_est.block(ctx, ast_stmt, top_level_block)
+function ir_est.block(ctx, ast_stmt)
   -- Calculate total stack space required by this block
   local stack_size = 0
   for i,ast_substmt in ipairs(ast_stmt) do
@@ -1413,7 +1386,9 @@ function ir_est.block(ctx, ast_stmt, top_level_block)
     ir_emit_statement(ctx, ast_substmt)
   end
 
-  if not top_level_block and stack_size ~= 0 then
+  -- If we're a top level block, don't try to free the stack. The stack is assumed to be restored
+  -- when the function returns.
+  if stack_size ~= 0 then
     ir_emit(ctx, ir_sfree(stack_size))
 
     ctx.local_index = local_index_prev
@@ -1422,15 +1397,28 @@ function ir_est.block(ctx, ast_stmt, top_level_block)
 end
 
 function ir_est.call(ctx, ast_stmt)
-  -- THE BIG TODO
+  -- HACK ALERT: Really punting on this one
+  local name = 'my_module$'..table.concat(ast_stmt.name_path, '$')
+  -- Get the stack ready for this function call
+  ir_emit(ctx, ir_salloc(#ast_stmt.argument_list))
+  -- Evaluate each expression and store
+  local arglist = ast_stmt.argument_list
+  for k=#arglist,1,-1 do
+    local ast_expr = arglist[k]
+    local reg = ir_emit_expression(ctx, ast_expr)
+    local arg_reg = 's'..(ctx.local_index + #arglist - k)
+    ir_emit(ctx, ir_mov(arg_reg, reg))
+  end
+  ir_emit(ctx, ir_call(name))
+  ir_emit(ctx, ir_sfree(#ast_stmt.argument_list))
 end
 
-ir_emit_statement = function(ctx, ast_stmt, ...)
+ir_emit_statement = function(ctx, ast_stmt)
   -- All temporary registers are free game at the beginning of a statement
   cleartemps(ctx)
   local h = ir_est[ast_stmt.type]
   if h then
-    h(ctx, ast_stmt, ...)
+    h(ctx, ast_stmt)
   else
     error('Unknown AST statement type `'..ast_stmt.type..'`')
   end
@@ -1540,6 +1528,12 @@ function ir_dst.geq(stmt)
   io.write('  '..stmt.register_z..' := '..stmt.register_x..' >= '..stmt.register_y..'\n')
 end
 
+function ir_dst.pusharg(stmt)
+  io.write('  pusharg '..stmt.register..'\n')
+end
+function ir_dst.poparg(stmt)
+  io.write('  poparg '..stmt.register..'\n')
+end
 function ir_dst.call(stmt)
   io.write('  call '..stmt.name..'\n')
 end
@@ -1701,7 +1695,7 @@ end
 --   %r13
 --   %r14
 --   %r15
--- These registers are fair game for our function
+-- These registers are fair game
 local rbft = {
   ['%rax'] = '%al',
   ['%rcx'] = '%cl',
@@ -1749,7 +1743,9 @@ local function emit_binary_arith_op(ctx, instr, ir_stmt)
   if type_z == 'literal' then error('Invalid instruction') end
   if type_z == 'register' then
     -- op_z is a register, so only a single memory reference is possible here
-    emit(ctx, 'mov  '..op_x..', '..op_z)
+    if op_x ~= op_z then
+      emit(ctx, 'mov  '..op_x..', '..op_z)
+    end
     emit(ctx, instr..' '..op_y..', '..op_z)
   else
     -- Have to push something otherwise
@@ -1807,15 +1803,6 @@ end
 
 -- (e)mit (s)tatement (t)able
 local est = {}
-
-function est.salloc(ctx, ir_stmt)
-  -- Allocate by subtracting from %rsp
-  emit(ctx, 'sub  $'..(ir_stmt.size*8)..', %rsp')
-end
-function est.sfree(ctx, ir_stmt)
-  -- Deallocate by adding to %rsp
-  emit(ctx, 'add  $'..(ir_stmt.size*8)..', %rsp')
-end
 
 function est.mov(ctx, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
@@ -1911,8 +1898,17 @@ function est.geq(ctx, ir_stmt)
   emit_comparison(ctx, 'setge', ir_stmt)
 end
 
+function est.salloc(ctx, ir_stmt)
+  -- Allocate by subtracting from %rsp
+  emit(ctx, 'sub  $'..(ir_stmt.size*8)..', %rsp')
+end
+function est.sfree(ctx, ir_stmt)
+  -- Deallocate by adding to %rsp
+  emit(ctx, 'add  $'..(ir_stmt.size*8)..', %rsp')
+end
+
 function est.call(ctx, ir_stmt)
-  io.write('  call '..ir_stmt.name..'\n')
+  emit(ctx, 'call '..ir_stmt.name)
 end
 function est.ret(ctx, ir_stmt)
   emit_epilogue(ctx)
@@ -1978,7 +1974,7 @@ local function emit_subroutine(ctx, ir_subr)
   -- Emit default footer if the subroutine didn't already include one
   local last_ir_stmt = ir_subr.statements[#ir_subr.statements]
   if last_ir_stmt.type ~= 'ret' then
-    emit('mov $0, %rax')
+    emit(ctx, 'mov $0, %rax')
     emit_epilogue(ctx)
   end
 end
