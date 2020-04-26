@@ -12,59 +12,94 @@ end
 
 -- Expressions: (The list is long)
 local function ast_expr_integer(value)
+  assert(value)
   return { type = 'integer', value = value }
 end
 local function ast_expr_variable(name)
+  assert(name)
   return { type = 'variable', name = name }
 end
 
 local function ast_expr_negate(subexpr)
+  assert(subexpr)
   return { type = 'negate', expression = subexpr }
 end
 local function ast_expr_binnot(subexpr)
+  assert(subexpr)
   return { type = 'binnot', expression = subexpr }
 end
 local function ast_expr_lognot(subexpr)
+  assert(subexpr)
   return { type = 'lognot', expression = subexpr }
 end
 
 local function ast_expr_add(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'add', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_sub(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'sub', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_mul(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'mul', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_div(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'div', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
 local function ast_expr_cmpeq(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'cmpeq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_cmpneq(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'cmpneq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_cmplt(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'cmplt', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_cmpgt(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'cmpgt', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_cmpleq(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'cmpleq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_cmpgeq(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'cmpgeq', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 
 local function ast_expr_logand(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'logand', expression_a = subexpr_a, expression_b = subexpr_b }
 end
 local function ast_expr_logor(subexpr_a, subexpr_b)
+  assert(subexpr_a)
+  assert(subexpr_b)
   return { type = 'logor', expression_a = subexpr_a, expression_b = subexpr_b }
+end
+
+local function ast_expr_call(name_path, args)
+  assert(name_path)
+  assert(args)
+  return { type = 'call', name_path = name_path, arguments = args }
 end
 
 -- Statements: block | local | if | return | assign | call
@@ -72,42 +107,65 @@ local function ast_stmt_block()
   return { type = 'block' }
 end
 local function ast_stmt_local_declaration(type_name_path, name)
+  assert(type_name_path)
+  assert(name)
   return { type = 'local', type_name_path = type_name_path, name = name }
 end
 local function ast_stmt_if(expr, if_stmt, else_stmt)
+  assert(expr)
+  assert(if_stmt)
+  assert(else_stmt)
   return { type = 'if', expression = expr, if_statement = if_stmt, else_statement = else_stmt }
 end
 local function ast_stmt_return(expr)
+  assert(expr)
   return { type = 'return', expression = expr }
 end
 local function ast_stmt_assign(name, expr)
+  assert(name)
+  assert(expr)
   return { type = 'assign', name = name, expression = expr }
 end
-local function ast_stmt_function_call(name_path, arg_list)
-  return { type = 'call', name_path = name_path, argument_list = arg_list }
+local function ast_stmt_function_call(name_path, args)
+  assert(name_path)
+  assert(args)
+  return { type = 'call', name_path = name_path, arguments = args }
 end
 
 -- Struct declarations: field | access
 local function ast_struct_field_declaration(type_name_path, name)
+  assert(type_name_path)
+  assert(name)
   return { type = 'field', type_name_path = type_name_path, name = name }
 end
 local function ast_struct_access_declaration(module_name_path)
+  assert(module_name_path)
   return { type = 'access', name_path = module_name_path }
 end
 
 -- Module declarations: member | function
 local function ast_member_declaration(type_name_path, name)
+  assert(type_name_path)
+  assert(name)
   return { type = 'member', type_name_path = type_name_path, name = name }
 end
-local function ast_function_declaration(name, arguments, block)
-  return { type = 'function', name = name, arguments = arguments, block = block }
+local function ast_function_declaration(name, arguments, returns, block)
+  assert(name)
+  assert(arguments)
+  assert(returns)
+  assert(block)
+  return { type = 'function', name = name, arguments = arguments, returns = returns, block = block }
 end
 
 -- File-scope declarations: struct | module
 local function ast_struct_declaration(name_path, declarations)
+  assert(name_path)
+  assert(declarations)
   return { type = 'struct', name_path = name_path, declarations = declarations }
 end
 local function ast_module_declaration(name_path, declarations)
+  assert(name_path)
+  assert(declarations)
   return { type = 'module', name_path = name_path, declarations = declarations }
 end
 
@@ -118,18 +176,25 @@ ast_dump_expr = function(expr, level)
   local level = level or 0
   local indent = string.rep('  ', level)
   io.write(indent..string.upper(expr.type)..' ')
-  if expr.value then
-    io.write(tostring(expr.value)..'\n')
-  elseif expr.name then
-    io.write(expr.name..'\n')
+  if expr.type == 'call' then
+    io.write(table.concat(expr.name_path, ':')..'\n')
+    for k,arg_expr in ipairs(expr.arguments) do
+      ast_dump_expr(arg_expr, level+1)
+    end
   else
-    io.write('\n')
-  end
-  if expr.expression then
-    ast_dump_expr(expr.expression, level+1)
-  elseif expr.expression_a and expr.expression_b then
-    ast_dump_expr(expr.expression_a, level+1)
-    ast_dump_expr(expr.expression_b, level+1)
+    if expr.value then
+      io.write(tostring(expr.value)..'\n')
+    elseif expr.name then
+      io.write(expr.name..'\n')
+    else
+      io.write('\n')
+    end
+    if expr.expression then
+      ast_dump_expr(expr.expression, level+1)
+    elseif expr.expression_a and expr.expression_b then
+      ast_dump_expr(expr.expression_a, level+1)
+      ast_dump_expr(expr.expression_b, level+1)
+    end
   end
 end
 
@@ -162,7 +227,7 @@ ast_dump_stmt = function(stmt, level)
     end
   elseif stmt.type == 'call' then
     io.write(indent..'CALL '..table.concat(stmt.name_path,':')..'\n')
-    for i,arg_expr in ipairs(stmt.argument_list) do
+    for i,arg_expr in ipairs(stmt.arguments) do
       ast_dump_expr(arg_expr, level+1)
     end
   end
@@ -177,7 +242,9 @@ function ast_dump_module_decl(decl, level)
       io.write(arg.name..':'..table.concat(arg.type_name_path,':')..' ')
     end
     io.write(') -> ( ')
-    -- ...
+    for i,arg in ipairs(decl.returns) do
+      io.write(arg.name..':'..table.concat(arg.type_name_path,':')..' ')
+    end
     io.write(')\n')
     ast_dump_stmt(decl.block, level + 1)
   elseif decl.type == 'member' then
@@ -333,7 +400,12 @@ local function Lexer(file)
           yield { type = 'plus' }
         elseif c == '-' then
           c = readc()
-          yield { type = 'minus' }
+          if c == '>' then
+            c = readc()
+            yield { type = 'rarrow' }
+          else
+            yield { type = 'minus' }
+          end
         elseif c == '*' then
           c = readc()
           yield { type = 'asterisk' }
@@ -417,15 +489,15 @@ end
 
 --[[
 
-Full parser grammar, in extended BNF:
+Full parser grammar, in LL(1) extended BNF:
 
 <name-path-cdr> := { ':' <name> }
 <name-path> := <name> <name-path-cdr>
 
 <expression-p0> := '(' <expression> ')'
-               | ( '-' | '~' | '!' ) <expression-p0> 
-               | <integer> 
-               | <name>
+               | ( '-' | '~' | '!' ) <expression-p0>
+               | <integer>
+               | <name-path> [ '(' [ <arguments> ] ')' ]
 <expression-p1> := <expression-p0> { ( '*' | '/' ) <expression-p0> }
 <expression-p2> := <expression-p1> { ( '+' | '-' ) <expression-p1> }
 <expression-p3> := <expression-p2> { ( '<' | '>' | '<=' | '>=' ) <expression-p2> }
@@ -434,14 +506,14 @@ Full parser grammar, in extended BNF:
 <expression-p6> := <expression-p5> { '||' <expression-p5> }
 <expression> := <expression-p6>
 
-<argument-list> := <expression> { ',' <expression> }
-<argument-declaration-list> := <name-path> <name> { ',' <name-path> <name> }
+<arguments> := <expression> { ',' <expression> }
+<argument-declarations> := <name-path> <name> { ',' <name-path> <name> }
 
 <if-body> := 'if' '(' <expression> ')' <block>
 <else-body> := 'else' ( <if-body> [ <else-body> ] | <block> )
 <if-statement> := <if-body> [ <else-body> ]
 
-<statement-post-name-path> := <name> ';' | '(' [ <argument-list> ] ')' ';'
+<statement-post-name-path> := <name> ';' | '(' [ <arguments> ] ')' ';'
 <statement-post-name> := '=' <expression> ';' | <name-path-cdr> <statement-post-name-path>
 <statement> := 'return' [ <expression> ] ';'
              | <if-statement>
@@ -451,7 +523,9 @@ Full parser grammar, in extended BNF:
 
 <block> := '{' { <statement> } '}'
 
-<function-declaration> := 'function' <name> '(' ')' <block>
+<function-declaration> := 'function' <name> '(' [ <argument-declarations> ] ')'
+                          [ '->' '(' [ <argument-declarations> ] ')' ]
+                          <block>
 <member-declaration> := <name-path> <name> ';'
 <module-body-declaration> := <function-declaration> | <member-declaration>
 <module-declaration> := 'module' <name-path> '{' { <module-body-declaration> } '}'
@@ -641,6 +715,39 @@ end
 
 local parse_expression
 
+-- Tries to parse: [ <argument-list> ]
+-- Returns the AST object for an argument list
+-- Returns an empty list if no expressions could be read
+local function parse_arguments(L)
+  local list = {}
+  local expr = parse_expression(L)
+  if expr then
+    table.insert(list, expr)
+    while parse_token(L, 'comma') do
+      table.insert(list, expect_expression(L))
+    end
+  end
+  return list
+end
+
+-- Tries to parse: [ <argument-declaration-list> ]
+-- Returns the AST object for a argument declaration list
+-- Returns an empty list if no declarations could be read
+local function parse_argument_declarations(L)
+  local list = {}
+  local name_path = parse_name_path(L)
+  if name_path then
+    local name = expect_name(L)
+    table.insert(list, { type_name_path = name_path, name = name })
+    while parse_token(L, 'comma') do
+      local name_path = expect_name_path(L)
+      local name = expect_name(L)
+      table.insert(list, { type_name_path = name_path, name = name })
+    end
+  end
+  return list
+end
+
 -- Tries to parse the rule: <expression-p0>
 -- Returns the AST object for an expression
 function parse_expression_p0(L)
@@ -665,12 +772,29 @@ function parse_expression_p0(L)
     local value = L.next.value
     L:read()
     return ast_expr_integer(value)
-  elseif L.next.type == 'name' then
-    local name = L.next.value
-    L:read()
-    return ast_expr_variable(name)
   else
-    return nil
+    local name_path = parse_name_path(L)
+    if name_path then
+      local args
+      -- This might be a function call
+      if parse_token(L, 'lparen') then
+        args = parse_arguments(L)
+        expect_token(L, 'rparen')
+      end
+
+      if args then
+        return ast_expr_call(name_path, args)
+      else
+        if #name_path == 1 then
+          local name = name_path[1]
+          return ast_expr_variable(name)
+        else
+          error('Invalid variable reference')
+        end
+      end
+    else
+      return nil
+    end
   end
 end
 
@@ -869,39 +993,6 @@ parse_if_statement = function(L)
   end
 end
 
--- Parses: [ <argument-list> ]
--- Returns the AST object for an argument list
--- Returns an empty list if no expressions could be read
-local function parse_argument_list(L)
-  local list = {}
-  local expr = parse_expression(L)
-  if expr then
-    table.insert(list, expr)
-    while parse_token(L, 'comma') do
-      table.insert(list, expect_expression(L))
-    end
-  end
-  return list
-end
-
--- Parses: [ <argument-declaration-list> ]
--- Returns the AST object for a argument declaration list
--- Returns an empty list if no declarations could be read
-local function parse_argument_declaration_list(L)
-  local list = {}
-  local name_path = parse_name_path(L)
-  if name_path then
-    local name = expect_name(L)
-    table.insert(list, { type_name_path = name_path, name = name })
-    while parse_token(L, 'comma') do
-      local name_path = expect_name_path(L)
-      local name = expect_name(L)
-      table.insert(list, { type_name_path = name_path, name = name })
-    end
-  end
-  return list
-end
-
 -- Expects to parse the rule: <statement>
 -- Returns the AST object for a statement
 expect_statement = function(L)
@@ -937,11 +1028,11 @@ expect_statement = function(L)
     end
     -- Try to read an lparen
     if parse_token(L, 'lparen') then
-      -- Read function call arg_list
-      local arg_list = parse_argument_list(L)
+      -- Read function call argument list
+      local args = parse_arguments(L)
       expect_token(L, 'rparen')
       expect_token(L, 'semicolon')
-      return ast_stmt_function_call(name_path, arg_list)
+      return ast_stmt_function_call(name_path, args)
     end
     parse_abort_expected(L, 'equals', 'colon', 'name', 'lparen')
   end
@@ -954,10 +1045,16 @@ local function parse_function_declaration(L)
   if parse_token(L, 'function') then
     local name = expect_name(L)
     expect_token(L, 'lparen')
-    local arguments = parse_argument_declaration_list(L)
+    local arguments = parse_argument_declarations(L)
+    local returns = { }
     expect_token(L, 'rparen')
+    if parse_token(L, 'rarrow') then
+      expect_token(L, 'lparen');
+      returns = parse_argument_declarations(L)
+      expect_token(L, 'rparen')
+    end
     local block = parse_block(L)
-    return ast_function_declaration(name, arguments, block)
+    return ast_function_declaration(name, arguments, returns, block)
   end
 end
 
@@ -1025,59 +1122,107 @@ end
 --------------------------------------------------------------------------------
 
 local function ir_mov(reg_z, reg_x)
+  assert(reg_z)
+  assert(reg_x)
   return { type = 'mov', register_z = reg_z, register_x = reg_x }
 end
 
 local function ir_neg(reg_z, reg_x)
+  assert(reg_z)
+  assert(reg_x)
   return { type = 'neg', register_z = reg_z, register_x = reg_x }
 end
 local function ir_bnot(reg_z, reg_x)
+  assert(reg_z)
+  assert(reg_x)
   return { type = 'bnot', register_z = reg_z, register_x = reg_x }
 end
 local function ir_lnot(reg_z, reg_x)
+  assert(reg_z)
+  assert(reg_x)
   return { type = 'lnot', register_z = reg_z, register_x = reg_x }
 end
 
 local function ir_add(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'add', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 local function ir_sub(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'sub', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 local function ir_mul(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'mul', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 local function ir_div(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'div', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 
 local function ir_eq(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'eq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 local function ir_neq(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'neq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 local function ir_lt(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'lt', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 local function ir_gt(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'gt', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 local function ir_leq(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'leq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 local function ir_geq(reg_z, reg_x, reg_y)
+  assert(reg_z)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'geq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
 end
 
 local function ir_salloc(size)
+  assert(size)
   return { type = 'salloc', size = size }
 end
 local function ir_sfree(size)
+  assert(size)
   return { type = 'sfree', size = size }
 end
 
+local function ir_begincall(size)
+  assert(size)
+  return { type = 'begincall', size = size }
+end
+local function ir_endcall()
+  return { type = 'endcall' }
+end
 local function ir_call(name)
+  assert(name)
   return { type = 'call', name = name }
 end
 local function ir_ret()
@@ -1086,52 +1231,83 @@ end
 
 -- Defines a jump label
 local function ir_label(name)
+  assert(name)
   return { type = 'label', name = name }
 end
 -- Unconditional jump
 local function ir_jmp(label_name)
+  assert(label_name)
   return { type = 'jmp', label_name = label_name }
 end
 -- Jump if equal
 local function ir_jeq(label_name, reg_x, reg_y)
+  assert(label_name)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'jeq', label_name = label_name, register_x = reg_x, register_y = reg_y }
 end
 -- Jump if not equal
 local function ir_jneq(label_name, reg_x, reg_y)
+  assert(label_name)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'jneq', label_name = label_name, register_x = reg_x, register_y = reg_y }
 end
 -- Jump if zero
 local function ir_jz(label_name, reg)
+  assert(label_name)
+  assert(reg)
   return { type = 'jz', label_name = label_name, register = reg }
 end
 -- Jump if nonzero
 local function ir_jnz(label_name, reg)
+  assert(label_name)
+  assert(reg)
   return { type = 'jnz', label_name = label_name, register = reg }
 end
 -- Jump if less than
 local function ir_jlt(label_name, reg_x, reg_y)
+  assert(label_name)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'jlt', label_name = label_name, register_x = reg_x, register_y = reg_y }
 end
 -- Jump if greater than
 local function ir_jgt(label_name, reg_x, reg_y)
+  assert(label_name)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'jgt', label_name = label_name, register_x = reg_x, register_y = reg_y }
 end
 -- Jump if less than or equal
 local function ir_jleq(label_name, reg_x, reg_y)
+  assert(label_name)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'jleq', label_name = label_name, register_x = reg_x, register_y = reg_y }
 end
 -- Jump if greater than or equal
 local function ir_jgeq(label_name, reg_x, reg_y)
+  assert(label_name)
+  assert(reg_x)
+  assert(reg_y)
   return { type = 'jgeq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+end
+
+local function ir_subroutine(args, rets, stmts, meta)
+  assert(args)
+  assert(rets)
+  assert(stmts)
+  return { type = 'subroutine', arguments = args, returns = rets, statements = stmts, meta = meta or { } }
 end
 
 --------------------------------------------------------------------------------
 -- Compilation
 --------------------------------------------------------------------------------
 
+-- Duplicates the given scope table
 local function dupscope(scope)
   local new_scope = { }
-  -- Inerit access to all of this scope's local variables
   for k,v in pairs(scope) do
     new_scope[k] = scope[k]
   end
@@ -1141,6 +1317,7 @@ end
 local function pushtemp(ctx)
   local idx = ctx.temp_index
   ctx.temp_index = ctx.temp_index + 1
+  -- Record high water mark
   if ctx.temp_index > ctx.temp_index_max then
     ctx.temp_index_max = ctx.temp_index
   end
@@ -1151,6 +1328,19 @@ local function poptemp(ctx)
 end
 local function cleartemps(ctx)
   ctx.temp_index = 0
+end
+
+local function pushstack(ctx)
+  local idx = ctx.stack_index
+  ctx.stack_index = ctx.stack_index + 1
+  -- Record high water mark
+  if ctx.stack_index > ctx.stack_index_max then
+    ctx.stack_index_max = ctx.stack_index
+  end
+  return 's'..idx
+end
+local function popstack(ctx)
+  ctx.stack_index = ctx.stack_index - 1
 end
 
 local function findlocal(ctx, name)
@@ -1168,11 +1358,92 @@ local function newlabel(ctx)
   return 'l'..idx
 end
 
+local function find_call(ctx, name_path)
+  local name = table.concat(name_path, '$')
+  local subr = ctx.subroutines[name]
+  if not subr then
+    error('Function '..table.concat(name_path, ':')..' is undefined here.')
+  end
+  return subr
+end
+
 local function ir_emit(ctx, ir_stmt)
-  table.insert(ctx.statements, ir_stmt)
+  table.insert(ctx.subroutine.statements, ir_stmt)
 end
 
 local ir_emit_expression
+
+--[[
+--
+--  Nested call expressions
+--
+--  begincall 4                 begincall 4
+--  arg0 = x                    arg0 = x
+--  arg1 = y                    arg1 = y
+--  arg2 = call expression => | begincall 3
+--  arg3 = z                  | arg0 = ...
+--  endcall                   | arg1 = ...
+--                            | call
+--                            | tmp = arg2
+--                            | endcall
+--                              arg2 = tmp
+--                              arg3 = z
+--                              call
+--                              endcall
+--
+--  1) The result of the call expression has no side-effects, and is stored in a temporary, just
+--  like any other expression.
+--
+--  2) The begincall and endcall instructions give the implementation the opportunity to save and
+--  restore physical registers that would be clobbered by passing of arguments in registers. This
+--  will require stack space, but a push at begincall and a pop at endcall will not affect the
+--  contiguity of the stack arguments. (Though, the implementation may want to track the true
+--  address of the stack arguments being passed.)
+--
+--]]
+
+local function ir_emit_call(ctx, name_path, arglist, catch_return)
+  -- Find the function in question
+  local name = table.concat(name_path, '$')
+  local target_subr = find_call(ctx, name_path)
+  if #target_subr.arguments ~= #arglist then
+    error('Wrong number of arguments for call to '..table.concat(name_path, ':')..'(...)')
+  end
+  if catch_return and size_returns == 0 then
+    error(table.concat(name_path, ':')..
+          '(...) cannot be used in an expression; it has no return values.')
+  end
+  -- Create an appropriate argument bank
+  local size_args = #target_subr.arguments
+  local size_returns = #target_subr.returns
+  local size_total = math.max(size_args, size_returns)
+  ir_emit(ctx, ir_begincall(size_total))
+  -- Push arguments onto stack
+  local arg_index = 0
+  for k,ast_expr in ipairs(arglist) do
+    local exp_reg = ir_emit_expression(ctx, ast_expr)
+    -- Emit assignment to this argument register
+    local arg_index = k - 1
+    local arg_reg = 'a'..arg_index
+    arg_index = arg_index + 1
+    ir_emit(ctx, ir_mov(arg_reg, exp_reg))
+    -- Free exp_reg, it will be at the top of the temp stack
+    -- JANK: Is there a better way to free/track temporary registers?
+    poptemp(ctx)
+  end
+  -- Actually emit call instruction
+  ir_emit(ctx, ir_call(name))
+  -- Optionally catch first return value
+  local return_reg_tmp
+  if catch_return then
+    return_reg_tmp = pushtemp(ctx)
+    -- Place in temporary
+    ir_emit(ctx, ir_mov(return_reg_tmp, 'a0'));
+  end
+  -- Clear stack
+  ir_emit(ctx, ir_endcall(size_total))
+  return return_reg_tmp
+end
 
 -- IR (e)mit (e)xpression (t)able
 local ir_eet = { }
@@ -1326,6 +1597,10 @@ function ir_eet.variable(ctx, expr)
   return reg
 end
 
+function ir_eet.call(ctx, expr)
+  return ir_emit_call(ctx, expr.name_path, expr.arguments, true)
+end
+
 ir_emit_expression = function(ctx, expr)
   local h = ir_eet[expr.type]
   if h then
@@ -1362,15 +1637,16 @@ ir_est['if'] = function(ctx, ast_stmt)
 end
 
 ir_est['local'] = function(ctx, ast_stmt)
-  io.write('local `'..ast_stmt.name..'` is at index '..ctx.local_index..'\n')
-  ctx.local_scope[ast_stmt.name] = 's'..ctx.local_index
-  ctx.local_index = ctx.local_index + 1
+  local reg = pushstack(ctx)
+  ctx.local_scope[ast_stmt.name] = reg
+  io.write('local `'..ast_stmt.name..'` is in stack register '..reg..'\n')
 end
 
 ir_est['return'] = function(ctx, ast_stmt)
   local expr = ast_stmt.expression
   if expr then
-    local reg = ir_emit_expression(ctx, expr)
+    local reg_x = ir_emit_expression(ctx, expr)
+    ir_emit(ctx, ir_mov('i0', reg_x))
   else
     local reg = pushtemp(ctx)
     ir_emit(ctx, ir_mov(reg, 0))
@@ -1394,14 +1670,13 @@ function ir_est.block(ctx, ast_stmt)
 
   io.write('this block will use '..stack_size..' words of stack space\n')
 
-  local local_index_block_prev
-  local local_index_prev
+  local stack_index_prev
   local local_scope_prev
 
   if stack_size ~= 0 then
     ir_emit(ctx, ir_salloc(stack_size))
 
-    local_index_prev = ctx.local_index
+    stack_index_prev = ctx.stack_index
     local_scope_prev = ctx.local_scope
 
     ctx.local_scope = dupscope(ctx.local_scope)
@@ -1411,31 +1686,16 @@ function ir_est.block(ctx, ast_stmt)
     ir_emit_statement(ctx, ast_substmt)
   end
 
-  -- If we're a top level block, don't try to free the stack. The stack is assumed to be restored
-  -- when the function returns.
   if stack_size ~= 0 then
     ir_emit(ctx, ir_sfree(stack_size))
 
-    ctx.local_index = local_index_prev
+    ctx.stack_index = stack_index_prev
     ctx.local_scope = local_scope_prev
   end
 end
 
 function ir_est.call(ctx, ast_stmt)
-  -- HACK ALERT: Really punting on this one
-  local name = 'my_module$'..table.concat(ast_stmt.name_path, '$')
-  -- Get the stack ready for this function call
-  ir_emit(ctx, ir_salloc(#ast_stmt.argument_list))
-  -- Evaluate each expression and store
-  local arglist = ast_stmt.argument_list
-  for k=#arglist,1,-1 do
-    local ast_expr = arglist[k]
-    local reg = ir_emit_expression(ctx, ast_expr)
-    local arg_reg = 's'..(ctx.local_index + #arglist - k)
-    ir_emit(ctx, ir_mov(arg_reg, reg))
-  end
-  ir_emit(ctx, ir_call(name))
-  ir_emit(ctx, ir_sfree(#ast_stmt.argument_list))
+  ir_emit_call(ctx, ast_stmt.name_path, ast_stmt.arguments, false)
 end
 
 ir_emit_statement = function(ctx, ast_stmt)
@@ -1449,57 +1709,66 @@ ir_emit_statement = function(ctx, ast_stmt)
   end
 end
 
-local function ir_subroutine(ast_module_name_path, ast_func)
-  local arguments = { 'int', 'int' }
-  local returns = { 'int' }
-  local statements = { }
-
+local function ir_compile_subroutine(ctx, ast_func)
+  local subr = ir_subroutine({ }, { }, { })
   -- Populate initial scope with argument registers
   local local_scope = { }
-  for k,ast_arg_decl in ipairs(ast_func.arguments) do
-    local_scope[ast_arg_decl.name] = 'i'..(k-1)
+  local k = 0
+  for i,ast_arg_decl in ipairs(ast_func.arguments) do
+    local_scope[ast_arg_decl.name] = 'i'..tostring(k)
+    k = k + 1
+    table.insert(subr.arguments, 'int')
   end
-
-  ctx = {
-    local_scope = local_scope,
-    statements = statements,
-    local_index = 0,
-    -- Counter / high water mark for the temp stack
-    temp_index = 0,
-    temp_index_max = 0,
-    -- Counter for unique label generation
-    label_index = 0,
-  }
-
-  assert(ast_func.block.type == 'block')
+  for i,ast_arg_decl in ipairs(ast_func.returns) do
+    local_scope[ast_arg_decl.name] = 'i'..tostring(k)
+    k = k + 1
+    table.insert(subr.returns, 'int')
+  end
+  -- Initialize subroutine context
+  ctx.subroutine = subr
+  -- Counter / high water mark for the temp stack
+  ctx.temp_index = 0
+  ctx.temp_index_max = 0
+  -- This function's scope -> IR register map
+  ctx.local_scope = local_scope
+  ctx.stack_index = 0
+  ctx.stack_index_max = 0
+  -- Counter for unique label generation
+  ctx.label_index = 0
+  -- Read statements from AST
   ir_est.block(ctx, ast_func.block, true)
-
-  return {
-    type = 'subroutine',
-    name = table.concat(ast_module_name_path, '$')..'$'..ast_func.name,
-    arguments = arguments,
-    returns = returns,
-    statements = statements,
-    meta = {
-      temp_count = ctx.temp_index_max,
-    },
-  }
+  -- Temp count wasn't known before compilation
+  subr.meta.temp_count = ctx.temp_index_max
+  return subr
 end
 
 local function compile_ir(ast)
+  local ctx = {
+    -- Top-level context:
+    -- List of subroutines defined thus far
+    subroutines = { },
+  }
+
+  -- table.sort(ir.subroutines, function(sa, sb) return sa.name:lower() < sb.name:lower() end)
+
   local ir = {}
   ir.subroutines = {}
+
   for i,ast_fdecl in ipairs(ast) do
     if ast_fdecl.type == 'module' then
       local ast_module = ast_fdecl
       for i,mdecl in ipairs(ast_module.declarations) do
         if mdecl.type == 'function' then
           local ast_func = mdecl
-          table.insert(ir.subroutines, ir_subroutine(ast_module.name_path, ast_func))
+          local subr = ir_compile_subroutine(ctx, ast_func)
+          subr.name = table.concat(ast_module.name_path, '$')..'$'..ast_func.name
+          ctx.subroutines[subr.name] = subr
+          table.insert(ir.subroutines, subr)
         end
       end
     end
   end
+
   return ir
 end
 
@@ -1559,11 +1828,11 @@ function ir_dst.geq(stmt)
   io.write('  '..stmt.register_z..' := '..stmt.register_x..' >= '..stmt.register_y..'\n')
 end
 
-function ir_dst.pusharg(stmt)
-  io.write('  pusharg '..stmt.register..'\n')
+function ir_dst.begincall(stmt)
+  io.write('  begincall '..stmt.size..'\n')
 end
-function ir_dst.poparg(stmt)
-  io.write('  poparg '..stmt.register..'\n')
+function ir_dst.endcall(stmt)
+  io.write('  endcall\n')
 end
 function ir_dst.call(stmt)
   io.write('  call '..stmt.name..'\n')
@@ -1630,7 +1899,6 @@ local function ir_dump_subroutine(subr)
   end
   io.write(')\n')
   for i,stmt in ipairs(subr.statements) do
-    --pprint(stmt)
     ir_dump_statement(stmt)
   end
   io.write('\n')
@@ -1673,6 +1941,21 @@ local function emit_epilogue(ctx)
   emit(ctx, 'ret')
 end
 
+local function emit_stack_alloc(ctx, size)
+  -- Allocate by subtracting from %rsp
+  emit(ctx, 'sub  $'..(size*8)..', %rsp')
+  -- Track stack index (relative to %rbp)
+  -- Note: We don't track push/pop!
+  ctx.stack_index = ctx.stack_index + size
+end
+
+local function emit_stack_dealloc(ctx, size)
+  -- Deallocate by adding to %rsp
+  emit(ctx, 'add  $'..(size*8)..', %rsp')
+  -- Track stack index (relative to %rbp)
+  ctx.stack_index = ctx.stack_index - size
+end
+
 -- (o)perand (t)emporary (r)egister (t)able
 local otrt = {
   '%rax',
@@ -1706,19 +1989,38 @@ local function operand(ctx, name)
   elseif typestr == 's' then
     -- Stack access
     local index = string.match(name, 's(%d+)')
-    if not index then
+    if index then
+      index = tonumber(index)
+    else
       error('Invalid IR stack register `'..name..'`')
     end
-    index = tonumber(index)
-    return tostring(-8*(index+1))..'(%rbp)', 'memory'
+    local stack_offset = -8*(index + 1)
+    return stack_offset..'(%rbp)', 'memory'
+  elseif typestr == 'a' then
+    -- Call argument access
+    local call_data = ctx.call_data_stack[#ctx.call_data_stack]
+    if not call_data then
+      error('No matching begincall instruction for argument register `'..name..'`')
+    end
+    local index = string.match(name, 'a(%d+)')
+    if index then
+      index = tonumber(index)
+    else
+      error('Invalid IR argument register `'..name..'`')
+    end
+    -- Arguments are always relative to 
+    local stack_offset = -8*(call_data.args_index + index + 1)
+    return stack_offset..'(%rbp)', 'memory'
   elseif typestr == 'i' then
-    -- Stack access
+    -- Call input access
     local index = string.match(name, 'i(%d+)')
-    if not index then
+    if index then
+      index = tonumber(index)
+    else
       error('Invalid IR input/output register `'..name..'`')
     end
-    index = tonumber(index)
-    return tostring(8*(index+2))..'(%rbp)', 'memory'
+    local stack_offset = 8*(ctx.input_size - index + 1)
+    return stack_offset..'(%rbp)', 'memory'
   else
     local integer = tonumber(name)
     if not integer then
@@ -1939,14 +2241,31 @@ function est.geq(ctx, ir_stmt)
 end
 
 function est.salloc(ctx, ir_stmt)
-  -- Allocate by subtracting from %rsp
-  emit(ctx, 'sub  $'..(ir_stmt.size*8)..', %rsp')
+  emit_stack_alloc(ctx, ir_stmt.size)
 end
 function est.sfree(ctx, ir_stmt)
-  -- Deallocate by adding to %rsp
-  emit(ctx, 'add  $'..(ir_stmt.size*8)..', %rsp')
+  emit_stack_dealloc(ctx, ir_stmt.size)
 end
 
+function est.begincall(ctx, ir_stmt)
+  local call_data = { }
+  call_data.args_size = ir_stmt.size
+  -- Clobbered argument registers should be saved and recorded here
+  -- ...
+  -- Allocate stack argument space, save beginning
+  call_data.args_index = ctx.stack_index
+  emit_stack_alloc(ctx, call_data.args_size)
+  -- Save call data for future endcall
+  table.insert(ctx.call_data_stack, call_data)
+end
+function est.endcall(ctx, ir_stmt)
+  local call_data = table.remove(ctx.call_data_stack)
+  if not call_data then error('No matching begincall instruction for endcall instruction') end
+  -- Clobbered argument registers should be restored here
+  -- ...
+  -- Deallocate stack argument space
+  emit_stack_dealloc(ctx, call_data.args_size)
+end
 function est.call(ctx, ir_stmt)
   emit(ctx, 'call '..ir_stmt.name)
 end
@@ -2006,7 +2325,13 @@ local function emit_subroutine(ctx, ir_subr)
   emit(ctx, '.type '..ir_subr.name..', @function')
   emit_label(ctx, ir_subr.name)
   emit_prologue(ctx)
-  ctx.temp_count = math.max(ir_subr.meta.temp_count, 2)
+  -- We may need to do our own temporary register allocation/analysis in order to efficiently
+  -- translate. After all, we track our own stack index. Perhaps this should eventually mean
+  -- transforming the IR into something acceptable, rather than allocating registers on the fly.
+  ctx.temp_count = ir_subr.meta.temp_count
+  ctx.input_size = math.max(#ir_subr.arguments, #ir_subr.returns)
+  ctx.call_data_stack = { }
+  ctx.stack_index = 0
   -- Emit statements
   for i,ir_stmt in ipairs(ir_subr.statements) do
     emit_statement(ctx, ir_stmt)
@@ -2038,7 +2363,14 @@ local function generate(ir, outfile)
   emit(ctx, '.globl main')
   emit(ctx, '.type main, @function')
   emit_label(ctx, 'main')
-  emit(ctx, 'call my_module$func1')
+  emit(ctx, 'push %rbp')
+  emit(ctx, 'mov  %rsp, %rbp')
+  emit(ctx, 'sub  $8, %rsp')
+  emit(ctx, 'call my_module$main')
+  emit(ctx, 'mov  -8(%rbp), %eax')
+  emit(ctx, 'add  $8, %rsp')
+  emit(ctx, 'mov  %rbp, %rsp')
+  emit(ctx, 'pop  %rbp')
   emit(ctx, 'ret')
   emit_line(ctx)
 end

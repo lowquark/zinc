@@ -1,7 +1,7 @@
 
 struct MyStruct {
-  int a;
-  int b;
+  int64 a;
+  int64 b;
   Child child;
 
   access my_module;
@@ -12,34 +12,21 @@ struct MyStruct:Child {
 }
 
 module my_module {
-  int var_a;
-  int var_b;
+  int64 var_a;
+  int64 var_b;
 
-  function bla(int a, int b, int c) {
+  function bla(int64 a, int64 b, int64 c) -> (int64 d, int64 e) {
     return a + b + c;
   }
 
-  function func1() {
-    int local_a;
-    int local_b;
-    int local_c;
-
-    local_a = (11*1)+(0*1);
-    local_b = 2;
-    local_c = -9;
-
-    bla(local_a, local_b, local_c);
-
-    if(local_c == -9) {
-    } else if(local_b == 13) {
-      int local_d;
-      local_c = 1000;
-      local_d = 3;
-    } else {
-      local_c = 1000000;
-    }
-
-    return (local_b - local_a == local_c)*57;
+  function main() -> (int64 _) {
+    int64 r;
+    int64 u;
+    int64 v;
+    r = 5;
+    u = 5;
+    v = 5;
+    return my_module:bla(my_module:bla(r, r, r), u, v);
   }
 }
 
