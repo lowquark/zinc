@@ -38,70 +38,96 @@ end
 function ast.expr_add(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'add', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'add',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_sub(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'sub', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'sub',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_mul(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'mul', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'mul',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_div(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'div', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'div',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 
 function ast.expr_cmpeq(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'cmpeq', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'cmpeq',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_cmpneq(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'cmpneq', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'cmpneq',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_cmplt(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'cmplt', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'cmplt',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_cmpgt(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'cmpgt', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'cmpgt',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_cmpleq(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'cmpleq', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'cmpleq',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_cmpgeq(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'cmpgeq', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'cmpgeq',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 
 function ast.expr_logand(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'logand', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'logand',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 function ast.expr_logor(subexpr_a, subexpr_b)
   assert(subexpr_a)
   assert(subexpr_b)
-  return { type = 'logor', expression_a = subexpr_a, expression_b = subexpr_b }
+  return { type = 'logor',
+           expression_a = subexpr_a,
+           expression_b = subexpr_b }
 end
 
 function ast.expr_call(name_path, args)
   assert(name_path)
   assert(args)
-  return { type = 'call', name_path = name_path, arguments = args }
+  return { type = 'call',
+           name_path = name_path,
+           arguments = args }
 end
 
 -- Statements: block | local | if | return | assign | call
@@ -111,7 +137,9 @@ end
 function ast.stmt_local_declaration(type_name_path, name)
   assert(type_name_path)
   assert(name)
-  return { type = 'local', type_name_path = type_name_path, name = name }
+  return { type = 'local',
+           type_name_path = type_name_path,
+           name = name }
 end
 function ast.stmt_if(expr, if_stmt, else_stmt)
   assert(expr)
@@ -126,19 +154,25 @@ end
 function ast.stmt_assign(name, expr)
   assert(name)
   assert(expr)
-  return { type = 'assign', name = name, expression = expr }
+  return { type = 'assign',
+           name = name,
+           expression = expr }
 end
 function ast.stmt_function_call(name_path, args)
   assert(name_path)
   assert(args)
-  return { type = 'call', name_path = name_path, arguments = args }
+  return { type = 'call',
+           name_path = name_path,
+           arguments = args }
 end
 
 -- Struct declarations: field | access
 function ast.struct_field_declaration(type_name_path, name)
   assert(type_name_path)
   assert(name)
-  return { type = 'field', type_name_path = type_name_path, name = name }
+  return { type = 'field',
+           type_name_path = type_name_path,
+           name = name }
 end
 function ast.struct_access_declaration(module_name_path)
   assert(module_name_path)
@@ -149,26 +183,36 @@ end
 function ast.member_declaration(type_name_path, name)
   assert(type_name_path)
   assert(name)
-  return { type = 'member', type_name_path = type_name_path, name = name }
+  return { type = 'member',
+           type_name_path = type_name_path,
+           name = name }
 end
 function ast.function_declaration(name, arguments, returns, block)
   assert(name)
   assert(arguments)
   assert(returns)
   assert(block)
-  return { type = 'function', name = name, arguments = arguments, returns = returns, block = block }
+  return { type = 'function',
+           name = name,
+           arguments = arguments,
+           returns = returns,
+           block = block }
 end
 
 -- File-scope declarations: struct | module
 function ast.struct_declaration(name_path, declarations)
   assert(name_path)
   assert(declarations)
-  return { type = 'struct', name_path = name_path, declarations = declarations }
+  return { type = 'struct',
+           name_path = name_path,
+           declarations = declarations }
 end
 function ast.module_declaration(name_path, declarations)
   assert(name_path)
   assert(declarations)
-  return { type = 'module', name_path = name_path, declarations = declarations }
+  return { type = 'module',
+           name_path = name_path,
+           declarations = declarations }
 end
 
 ----------------------------------------------------------------------------------------------------
