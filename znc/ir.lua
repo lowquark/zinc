@@ -11,85 +11,123 @@ local ir = {}
 function ir.mov(reg_z, reg_x)
   assert(reg_z)
   assert(reg_x)
-  return { type = 'mov', register_z = reg_z, register_x = reg_x }
+  return { type = 'mov',
+           register_z = reg_z,
+           register_x = reg_x }
 end
 
 function ir.neg(reg_z, reg_x)
   assert(reg_z)
   assert(reg_x)
-  return { type = 'neg', register_z = reg_z, register_x = reg_x }
+  return { type = 'neg',
+           register_z = reg_z,
+           register_x = reg_x }
 end
 function ir.bnot(reg_z, reg_x)
   assert(reg_z)
   assert(reg_x)
-  return { type = 'bnot', register_z = reg_z, register_x = reg_x }
+  return { type = 'bnot',
+           register_z = reg_z,
+           register_x = reg_x }
 end
 function ir.lnot(reg_z, reg_x)
   assert(reg_z)
   assert(reg_x)
-  return { type = 'lnot', register_z = reg_z, register_x = reg_x }
+  return { type = 'lnot',
+           register_z = reg_z,
+           register_x = reg_x }
 end
 
 function ir.add(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'add', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'add',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 function ir.sub(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'sub', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'sub',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 function ir.mul(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'mul', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'mul',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 function ir.div(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'div', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'div',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 
 function ir.eq(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'eq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'eq',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 function ir.neq(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'neq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'neq',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 function ir.lt(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'lt', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'lt',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 function ir.gt(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'gt', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'gt',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 function ir.leq(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'leq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'leq',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 function ir.geq(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'geq', register_z = reg_z, register_x = reg_x, register_y = reg_y }
+  return { type = 'geq',
+           register_z = reg_z,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 
 function ir.salloc(size)
@@ -131,172 +169,206 @@ function ir.jeq(label_name, reg_x, reg_y)
   assert(label_name)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'jeq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+  return { type = 'jeq',
+           label_name = label_name,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 -- Jump if not equal
 function ir.jneq(label_name, reg_x, reg_y)
   assert(label_name)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'jneq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+  return { type = 'jneq',
+           label_name = label_name,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 -- Jump if zero
 function ir.jz(label_name, reg)
   assert(label_name)
   assert(reg)
-  return { type = 'jz', label_name = label_name, register = reg }
+  return { type = 'jz',
+           label_name = label_name,
+           register = reg }
 end
 -- Jump if nonzero
 function ir.jnz(label_name, reg)
   assert(label_name)
   assert(reg)
-  return { type = 'jnz', label_name = label_name, register = reg }
+  return { type = 'jnz',
+           label_name = label_name,
+           register = reg }
 end
 -- Jump if less than
 function ir.jlt(label_name, reg_x, reg_y)
   assert(label_name)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'jlt', label_name = label_name, register_x = reg_x, register_y = reg_y }
+  return { type = 'jlt',
+           label_name = label_name,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 -- Jump if greater than
 function ir.jgt(label_name, reg_x, reg_y)
   assert(label_name)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'jgt', label_name = label_name, register_x = reg_x, register_y = reg_y }
+  return { type = 'jgt',
+           label_name = label_name,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 -- Jump if less than or equal
 function ir.jleq(label_name, reg_x, reg_y)
   assert(label_name)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'jleq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+  return { type = 'jleq',
+           label_name = label_name,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 -- Jump if greater than or equal
 function ir.jgeq(label_name, reg_x, reg_y)
   assert(label_name)
   assert(reg_x)
   assert(reg_y)
-  return { type = 'jgeq', label_name = label_name, register_x = reg_x, register_y = reg_y }
+  return { type = 'jgeq',
+           label_name = label_name,
+           register_x = reg_x,
+           register_y = reg_y }
 end
 
 function ir.subroutine(args, rets, stmts, meta)
   assert(args)
   assert(rets)
   assert(stmts)
-  return { type = 'subroutine', arguments = args, returns = rets, statements = stmts, meta = meta or { } }
+  return { type = 'subroutine',
+           arguments = args,
+           returns = rets,
+           statements = stmts,
+           meta = meta or { } }
 end
 
 ----------------------------------------------------------------------------------------------------
 -- Pretty printing
 
--- (d)ump (s)tatement (t)able
-local dst = {}
+-- (s)atement (s)tring (t)able
+local sst = {}
 
-function dst.salloc(stmt)
-  io.write('  salloc '..stmt.size..'\n')
+function sst.salloc(stmt)
+  return 'salloc '..stmt.size
 end
-function dst.sfree(stmt)
-  io.write('  sfree '..stmt.size..'\n')
-end
-
-function dst.mov(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..'\n')
+function sst.sfree(stmt)
+  return 'sfree '..stmt.size
 end
 
-function dst.neg(stmt)
-  io.write('  '..stmt.register_z..' := -'..stmt.register_x..'\n')
-end
-function dst.bnot(stmt)
-  io.write('  '..stmt.register_z..' := ~'..stmt.register_x..'\n')
-end
-function dst.lnot(stmt)
-  io.write('  '..stmt.register_z..' := !'..stmt.register_x..'\n')
+function sst.mov(stmt)
+  return stmt.register_z..' := '..stmt.register_x
 end
 
-function dst.add(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' + '..stmt.register_y..'\n')
+function sst.neg(stmt)
+  return stmt.register_z..' := -'..stmt.register_x
 end
-function dst.sub(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' - '..stmt.register_y..'\n')
+function sst.bnot(stmt)
+  return stmt.register_z..' := ~'..stmt.register_x
 end
-function dst.mul(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' * '..stmt.register_y..'\n')
-end
-function dst.div(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' / '..stmt.register_y..'\n')
+function sst.lnot(stmt)
+  return stmt.register_z..' := !'..stmt.register_x
 end
 
-function dst.eq(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' == '..stmt.register_y..'\n')
+function sst.add(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' + '..stmt.register_y
 end
-function dst.neq(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' != '..stmt.register_y..'\n')
+function sst.sub(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' - '..stmt.register_y
 end
-function dst.lt(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' < '..stmt.register_y..'\n')
+function sst.mul(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' * '..stmt.register_y
 end
-function dst.gt(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' > '..stmt.register_y..'\n')
-end
-function dst.leq(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' <= '..stmt.register_y..'\n')
-end
-function dst.geq(stmt)
-  io.write('  '..stmt.register_z..' := '..stmt.register_x..' >= '..stmt.register_y..'\n')
+function sst.div(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' / '..stmt.register_y
 end
 
-function dst.begincall(stmt)
-  io.write('  begincall '..stmt.size..'\n')
+function sst.eq(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' == '..stmt.register_y
 end
-function dst.endcall(stmt)
-  io.write('  endcall\n')
+function sst.neq(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' != '..stmt.register_y
 end
-function dst.call(stmt)
-  io.write('  call '..stmt.name..'\n')
+function sst.lt(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' < '..stmt.register_y
 end
-function dst.ret(stmt)
-  io.write('  ret\n')
+function sst.gt(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' > '..stmt.register_y
+end
+function sst.leq(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' <= '..stmt.register_y
+end
+function sst.geq(stmt)
+  return stmt.register_z..' := '..stmt.register_x..' >= '..stmt.register_y
 end
 
-function dst.label(stmt)
-  io.write(stmt.name..':\n')
+function sst.begincall(stmt)
+  return 'begincall '..stmt.size
 end
-function dst.jmp(stmt)
-  io.write('  goto '..stmt.label_name..'\n')
+function sst.endcall(stmt)
+  return 'endcall'
 end
-function dst.jz(stmt)
-  io.write('  if !'..stmt.register..' goto '..stmt.label_name..'\n')
+function sst.call(stmt)
+  return 'call '..stmt.name
 end
-function dst.jnz(stmt)
-  io.write('  if '..stmt.register..' goto '..stmt.label_name..'\n')
+function sst.ret(stmt)
+  return 'ret'
 end
-function dst.jeq(stmt)
-  io.write('  if '..stmt.register_x..' == '..stmt.register_y..' goto '..stmt.label_name..'\n')
+
+function sst.label(stmt)
+  return stmt.name..':'
 end
-function dst.jneq(stmt)
-  io.write('  if '..stmt.register_x..' != '..stmt.register_y..' goto '..stmt.label_name..'\n')
+function sst.jmp(stmt)
+  return 'goto '..stmt.label_name
 end
-function dst.jlt(stmt)
-  io.write('  if '..stmt.register_x..' < '..stmt.register_y..' goto '..stmt.label_name..'\n')
+function sst.jz(stmt)
+  return 'if !'..stmt.register..' goto '..stmt.label_name
 end
-function dst.jgt(stmt)
-  io.write('  if '..stmt.register_x..' > '..stmt.register_y..' goto '..stmt.label_name..'\n')
+function sst.jnz(stmt)
+  return 'if '..stmt.register..' goto '..stmt.label_name
 end
-function dst.jleq(stmt)
-  io.write('  if '..stmt.register_x..' <= '..stmt.register_y..' goto '..stmt.label_name..'\n')
+function sst.jeq(stmt)
+  return 'if '..stmt.register_x..' == '..stmt.register_y..' goto '..stmt.label_name
 end
-function dst.jgeq(stmt)
-  io.write('  if '..stmt.register_x..' >= '..stmt.register_y..' goto '..stmt.label_name..'\n')
+function sst.jneq(stmt)
+  return 'if '..stmt.register_x..' != '..stmt.register_y..' goto '..stmt.label_name
+end
+function sst.jlt(stmt)
+  return 'if '..stmt.register_x..' < '..stmt.register_y..' goto '..stmt.label_name
+end
+function sst.jgt(stmt)
+  return 'if '..stmt.register_x..' > '..stmt.register_y..' goto '..stmt.label_name
+end
+function sst.jleq(stmt)
+  return 'if '..stmt.register_x..' <= '..stmt.register_y..' goto '..stmt.label_name
+end
+function sst.jgeq(stmt)
+  return 'if '..stmt.register_x..' >= '..stmt.register_y..' goto '..stmt.label_name
+end
+
+local function stmt_string(stmt)
+  local h = sst[stmt.type]
+  if h then
+    return h(stmt)
+  else
+    error('Unknown IR statement type `'..stmt.type..'`')
+  end
 end
 
 local function dump_statement(stmt)
-  local h = dst[stmt.type]
-  if h then
-    h(stmt)
+  if stmt.type == 'label' then
+    io.write(stmt_string(stmt)..'\n')
   else
-    error('Unknown IR statement type `'..stmt.type..'`')
+    io.write('  '..stmt_string(stmt)..'\n')
   end
 end
 
@@ -328,6 +400,8 @@ function ir.dump(ir)
     dump_subroutine(subr)
   end
 end
+
+ir.statement_string = stmt_string
 
 return ir
 

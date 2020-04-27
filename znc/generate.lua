@@ -1,4 +1,6 @@
 
+local ir = require 'ir'
+
 --------------------------------------------------------------------------------
 -- Generate x86-64 code from IR
 --------------------------------------------------------------------------------
@@ -9,6 +11,10 @@ end
 
 local function emit_noindent(ctx, instr)
   ctx.outfile:write(instr..'\n')
+end
+
+local function emit_comment(ctx, str)
+  ctx.outfile:write('\t#  '..str..'\n')
 end
 
 local function emit_label(ctx, label)
@@ -423,6 +429,7 @@ local function emit_subroutine(ctx, ir_subr)
   ctx.stack_index = 0
   -- Emit statements
   for i,ir_stmt in ipairs(ir_subr.statements) do
+    emit_comment(ctx, ir.statement_string(ir_stmt))
     emit_statement(ctx, ir_stmt)
   end
   -- Emit default footer if the subroutine didn't already include one
