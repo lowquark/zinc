@@ -144,7 +144,6 @@ end
 function ast.stmt_if(expr, if_stmt, else_stmt)
   assert(expr)
   assert(if_stmt)
-  assert(else_stmt)
   return { type = 'if', expression = expr, if_statement = if_stmt, else_statement = else_stmt }
 end
 function ast.stmt_return(expr)
