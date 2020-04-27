@@ -432,12 +432,9 @@ local function emit_subroutine(ctx, ir_subr)
     emit_comment(ctx, ir.statement_string(ir_stmt))
     emit_statement(ctx, ir_stmt)
   end
-  -- Emit default footer if the subroutine didn't already include one
-  local last_ir_stmt = ir_subr.statements[#ir_subr.statements]
-  if last_ir_stmt.type ~= 'ret' then
-    emit(ctx, 'mov $0, %rax')
-    emit_epilogue(ctx)
-  end
+  -- Emit default footer
+  emit(ctx, 'mov $0, %rax')
+  emit_epilogue(ctx)
 end
 
 local function generate(ir, outfile)

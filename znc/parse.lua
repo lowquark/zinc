@@ -1,11 +1,11 @@
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Parse a file and generate an AST
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 
 local ast = require 'ast'
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Lexer
 
 local function Lexer(file)
@@ -185,20 +185,20 @@ local function Lexer(file)
   return L
 end
 
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Parser
 
 --[[
 
 Full parser grammar, in LL(1) extended BNF:
 
-<name-path-cdr> := { ':' <name> }
-<name-path> := <name> <name-path-cdr>
+<name-path-rest> := { ':' <name> }
+<name-path> := <name> <name-path-rest>
 
 <expression-p0> := '(' <expression> ')'
-               | ( '-' | '~' | '!' ) <expression-p0>
-               | <integer>
-               | <name-path> [ '(' [ <arguments> ] ')' ]
+                 | ( '-' | '~' | '!' ) <expression-p0>
+                 | <integer>
+                 | <name-path> [ '(' [ <arguments> ] ')' ]
 <expression-p1> := <expression-p0> { ( '*' | '/' ) <expression-p0> }
 <expression-p2> := <expression-p1> { ( '+' | '-' ) <expression-p1> }
 <expression-p3> := <expression-p2> { ( '<' | '>' | '<=' | '>=' ) <expression-p2> }
@@ -215,7 +215,7 @@ Full parser grammar, in LL(1) extended BNF:
 <if-statement> := <if-body> [ <else-body> ]
 
 <statement-post-name-path> := <name> ';' | '(' [ <arguments> ] ')' ';'
-<statement-post-name> := '=' <expression> ';' | <name-path-cdr> <statement-post-name-path>
+<statement-post-name> := '=' <expression> ';' | <name-path-rest> <statement-post-name-path>
 <statement> := 'return' [ <expression> ] ';'
              | <if-statement>
              | <block>
@@ -278,8 +278,8 @@ local token_type_strings = {
 }
 
 -- Prints a parse error message and exits.
--- The printed error message contains the line and column number of the current lexer position, and indicates which
--- token was unexpected and which (given) tokens would have been valid.
+-- The printed error message contains the line and column number of the current lexer position, and
+-- indicates which token was unexpected and which (given) tokens would have been valid.
 --     L : Lexer state
 --   ... : Valid token type strings
 local function parse_abort_expected(L, ...)
@@ -342,7 +342,7 @@ local function expect_name(L)
   return name
 end
 
--- Tries to parse the rule: <name-path-cdr>
+-- Tries to parse the rule: <name-path-rest>
 -- Returns the AST object for a name path, using leading_name as the top-level name
 local function parse_name_path_rest(L, leading_name)
   local name_path = ast.name_path()
@@ -415,6 +415,7 @@ local function parse_struct_declaration(L)
 end
 
 local parse_expression
+local expect_expression
 
 -- Tries to parse: [ <argument-list> ]
 -- Returns the AST object for an argument list
@@ -451,7 +452,7 @@ end
 
 -- Tries to parse the rule: <expression-p0>
 -- Returns the AST object for an expression
-function parse_expression_p0(L)
+local function parse_expression_p0(L)
   if L.next.type == 'lparen' then
     L:read()
     local subexpr = parse_expression(L)
@@ -501,7 +502,7 @@ end
 
 -- Tries to parse the rule: <expression-p1>
 -- Returns the AST object for an expression
-function parse_expression_p1(L)
+local function parse_expression_p1(L)
   -- Read first operator argument (may be the only one)
   local subexpr = parse_expression_p0(L)
   while L.next.type == 'asterisk' or L.next.type == 'fslash' do
@@ -521,7 +522,7 @@ end
 
 -- Tries to parse the rule: <expression-p2>
 -- Returns the AST object for an expression
-function parse_expression_p2(L)
+local function parse_expression_p2(L)
   -- Read first operator argument (may be the only one)
   local subexpr = parse_expression_p1(L)
   while L.next.type == 'plus' or L.next.type == 'minus' do
@@ -541,7 +542,7 @@ end
 
 -- Tries to parse the rule: <expression-p3>
 -- Returns the AST object for an expression
-function parse_expression_p3(L)
+local function parse_expression_p3(L)
   -- Read first operator argument (may be the only one)
   local subexpr = parse_expression_p2(L)
   while L.next.type == 'cmplt' or L.next.type == 'cmpgt' or L.next.type == 'cmpleq' or L.next.type == 'cmpgeq' do
@@ -565,7 +566,7 @@ end
 
 -- Tries to parse the rule: <expression-p4>
 -- Returns the AST object for an expression
-function parse_expression_p4(L)
+local function parse_expression_p4(L)
   -- Read first operator argument (may be the only one)
   local subexpr = parse_expression_p3(L)
   while L.next.type == 'cmpeq' or L.next.type == 'cmpneq' do
@@ -585,7 +586,7 @@ end
 
 -- Tries to parse the rule: <expression-p5>
 -- Returns the AST object for an expression
-function parse_expression_p5(L)
+local function parse_expression_p5(L)
   -- Read first operator argument (may be the only one)
   local subexpr = parse_expression_p4(L)
   while L.next.type == 'logand' do
@@ -603,7 +604,7 @@ end
 
 -- Tries to parse the rule: <expression-p6>
 -- Returns the AST object for an expression
-function parse_expression_p6(L)
+local function parse_expression_p6(L)
   -- Read first operator argument (may be the only one)
   local subexpr = parse_expression_p5(L)
   while L.next.type == 'logor' do
@@ -622,9 +623,9 @@ end
 -- Tries to parse the rule: <expression>
 parse_expression = parse_expression_p6
 
--- Expects to parse the rule: <block>
+-- Expects to parse the rule: <expression>
 -- Returns the AST object for an expression
-function expect_expression(L)
+expect_expression = function(L)
   local expr = parse_expression(L)
   if not expr then
     parse_abort_expected(L, 'expression')
@@ -697,21 +698,22 @@ end
 -- Expects to parse the rule: <statement>
 -- Returns the AST object for a statement
 expect_statement = function(L)
+  local stmt
   if parse_token(L, 'return') then
     -- Easiest statement ever
-    local stmt = ast.stmt_return(parse_expression(L))
+    stmt = ast.stmt_return(parse_expression(L))
     expect_token(L, 'semicolon')
     return stmt
   end
-  local stmt = parse_if_statement(L)
+  stmt = parse_if_statement(L)
   if stmt then return stmt end
   stmt = parse_block(L)
   if stmt then return stmt end
   local first_name = parse_name(L)
   if first_name then
-    -- Reading a name could mean a variable declaration, or a variable assignment
+    -- Reading a name at the beginning of a statement is pretty ambiguous
     if parse_token(L, 'equals') then
-      -- Assigning first_name to expr
+      -- Assigning first_name from expr
       local expr = expect_expression(L)
       expect_token(L, 'semicolon')
       -- That's a variable assignment
