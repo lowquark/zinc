@@ -375,13 +375,13 @@ function est.jmp(ctx, ir_stmt)
   emit(ctx, 'jmp '..convert_label(ctx, ir_stmt.label_name))
 end
 function est.jz(ctx, ir_stmt)
-  local op_x, type_x = operand(ctx, ir_stmt.register)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
   if type_x == 'literal' then error('Invalid instruction') end
   emit(ctx, 'cmp $0, '..op_x)
   emit(ctx, 'je '..convert_label(ctx, ir_stmt.label_name))
 end
 function est.jnz(ctx, ir_stmt)
-  local op_x, type_x = operand(ctx, ir_stmt.register)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
   if type_x == 'literal' then error('Invalid instruction') end
   emit(ctx, 'cmp $0, '..op_x)
   emit(ctx, 'jne '..convert_label(ctx, ir_stmt.label_name))
@@ -437,7 +437,12 @@ local function emit_subroutine(ctx, ir_subr)
   emit_epilogue(ctx)
 end
 
-local function generate(ir, outfile)
+local function convert_subroutine(ir_subr)
+  local subr_out = ir.dup(ir_subr)
+  return subr_out
+end
+
+local function generate(ir_all, outfile)
   local ctx = {
     outfile = outfile,
     subroutine_id = 0,
@@ -447,7 +452,9 @@ local function generate(ir, outfile)
   emit(ctx, '.text')
   emit_line(ctx)
 
-  for i,ir_subr in ipairs(ir.subroutines) do
+  for i,ir_subr in ipairs(ir_all.subroutines) do
+    ir.allocate_registers_lsra(ir_subr, 7)
+    ir.dump_subroutine(ir_subr)
     emit_subroutine(ctx, ir_subr)
     emit_line(ctx)
     ctx.subroutine_id = ctx.subroutine_id + 1

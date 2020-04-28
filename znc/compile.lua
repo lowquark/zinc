@@ -29,8 +29,7 @@ local ir = require 'ir'
 --  2) The begincall and endcall instructions give the implementation the opportunity to save and
 --  restore physical registers that would be clobbered by passing of arguments in registers. This
 --  will require stack space, but a push at begincall and a pop at endcall will not affect the
---  contiguity of the stack arguments. (Though, the implementation may want to track the true
---  address of the stack arguments being passed.)
+--  contiguity of the stack arguments.
 --
 --]]
 
@@ -46,9 +45,8 @@ local function dupscope(scope)
   return new_scope
 end
 
--- Temporary registers are allocated on a stack
--- TODO: Is there a better way to allocate temporary registers?
-local function push_temp_reg(ctx)
+-- Temporary registers are allocated SSA via simple counter, which requires post processing
+local function new_temp_reg(ctx)
   local idx = ctx.temp_index
   ctx.temp_index = ctx.temp_index + 1
   -- Record high water mark
@@ -56,12 +54,6 @@ local function push_temp_reg(ctx)
     ctx.temp_index_max = ctx.temp_index
   end
   return 'r'..idx
-end
-local function pop_temp_reg(ctx)
-  ctx.temp_index = ctx.temp_index - 1
-end
-local function clear_temp_regs(ctx)
-  ctx.temp_index = 0
 end
 
 -- Returns a subroutine-unique label
@@ -126,7 +118,7 @@ function put_expression(ctx, expr)
 end
 
 function pet.integer(ctx, expr)
-  local reg = push_temp_reg(ctx)
+  local reg = new_temp_reg(ctx)
   emit(ctx, ir.mov(reg, expr.value))
   return reg
 end
@@ -151,125 +143,125 @@ end
 
 function pet.add(ctx, expr)
   -- Emit subexpressions
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
   -- Add this instruction to the list
-  emit(ctx, ir.add(reg_a, reg_a, reg_b))
-  -- Free reg_b, it will be at the top of the temp stack
-  pop_temp_reg(ctx)
+  emit(ctx, ir.add(reg_z, reg_x, reg_y))
   -- Return register of result
-  return reg_a
+  return reg_z
 end
 
 function pet.sub(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.sub(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.sub(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.mul(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.mul(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.mul(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.div(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.div(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.div(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.cmpeq(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.eq(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.eq(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.cmpneq(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.neq(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.neq(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.cmplt(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.lt(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.lt(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.cmpgt(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.gt(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.gt(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.cmpleq(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.leq(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.leq(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.cmpgeq(ctx, expr)
-  local reg_a = put_expression(ctx, expr.expression_a)
-  local reg_b = put_expression(ctx, expr.expression_b)
-  emit(ctx, ir.geq(reg_a, reg_a, reg_b))
-  pop_temp_reg(ctx)
-  return reg_a
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
+  local reg_y = put_expression(ctx, expr.expression_b)
+  emit(ctx, ir.geq(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 function pet.logand(ctx, expr)
   local lab1 = newlabel(ctx)
   local lab2 = newlabel(ctx)
-  local reg_a = put_expression(ctx, expr.expression_a)
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
   -- If nonzero, jump to the evaluation of the next expression
-  -- Otherwise, the result is zero, and reg_a already contains zero, so jump to end
-  emit(ctx, ir.jnz(lab1, reg_a));
+  -- Otherwise, set result to zero, and jump to end
+  emit(ctx, ir.jnz(lab1, reg_x));
+  emit(ctx, ir.mov(reg_z, 0));
   emit(ctx, ir.jmp(lab2));
   emit(ctx, ir.label(lab1))
-  local reg_b = put_expression(ctx, expr.expression_b)
-  -- Set reg_a to zero iff reg_b is zero
-  emit(ctx, ir.neq(reg_a, reg_b, 0))
+  local reg_y = put_expression(ctx, expr.expression_b)
+  -- Set reg_z to zero iff reg_y is zero
+  emit(ctx, ir.neq(reg_z, reg_y, 0))
   emit(ctx, ir.label(lab2))
-  pop_temp_reg(ctx)
-  return reg_a
+  return reg_z
 end
 
 function pet.logor(ctx, expr)
   local lab1 = newlabel(ctx)
   local lab2 = newlabel(ctx)
-  local reg_a = put_expression(ctx, expr.expression_a)
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
   -- If zero, jump to the evaluation of the next expression
   -- Otherwise, set result to one, and jump to end
-  emit(ctx, ir.jz(lab1, reg_a));
-  emit(ctx, ir.mov(reg_a, 1));
+  emit(ctx, ir.jz(lab1, reg_x));
+  emit(ctx, ir.mov(reg_z, 1));
   emit(ctx, ir.jmp(lab2));
   emit(ctx, ir.label(lab1))
-  local reg_b = put_expression(ctx, expr.expression_b)
-  -- Set reg_a to zero iff reg_b is zero
-  emit(ctx, ir.neq(reg_a, reg_b, 0))
+  local reg_y = put_expression(ctx, expr.expression_b)
+  -- Set reg_z to zero iff reg_y is zero
+  emit(ctx, ir.neq(reg_z, reg_y, 0))
   emit(ctx, ir.label(lab2))
-  pop_temp_reg(ctx)
-  return reg_a
+  return reg_z
 end
 
 function pet.variable(ctx, expr)
-  local reg = push_temp_reg(ctx)
+  local reg = new_temp_reg(ctx)
   emit(ctx, ir.mov(reg, find_variable(ctx, expr.name)))
   return reg
 end
@@ -306,15 +298,13 @@ function put_call(ctx, name_path, arglist, return_num)
     local arg_reg = 'a'..arg_index
     arg_index = arg_index + 1
     emit(ctx, ir.mov(arg_reg, exp_reg))
-    -- Free exp_reg, it will be at the top of the temp stack
-    pop_temp_reg(ctx)
   end
   -- Actually emit call instruction
   emit(ctx, ir.call(name))
   -- Alloc as many temporaries as return values
   local return_reg_tmp
   for k=0,return_num-1 do
-    return_reg_tmp = push_temp_reg(ctx)
+    return_reg_tmp = new_temp_reg(ctx)
     -- Place in temporary
     emit(ctx, ir.mov(return_reg_tmp, 'a'..k));
   end
@@ -325,7 +315,6 @@ end
 
 function put_statement(ctx, ast_stmt)
   -- All temporary registers are free game at the beginning of a statement
-  clear_temp_regs(ctx)
   local h = pst[ast_stmt.type]
   if h then
     h(ctx, ast_stmt)
@@ -341,7 +330,6 @@ pst['if'] = function(ctx, ast_stmt)
     -- Put conditional expression
     local reg_exp = put_expression(ctx, ast_stmt.expression)
     emit(ctx, ir.jz(lab1, reg_exp))
-    pop_temp_reg(ctx)
     -- Put if statement body
     put_statement(ctx, ast_stmt.if_statement)
     emit(ctx, ir.jmp(lab2))
@@ -354,7 +342,6 @@ pst['if'] = function(ctx, ast_stmt)
     -- Put conditional expression
     local reg_exp = put_expression(ctx, ast_stmt.expression)
     emit(ctx, ir.jz(lab1, reg_exp))
-    pop_temp_reg(ctx)
     -- Put if statement body
     put_statement(ctx, ast_stmt.if_statement)
     emit(ctx, ir.label(lab1))
@@ -363,6 +350,8 @@ end
 
 pst['local'] = function(ctx, ast_stmt)
   -- Do nothing - local variable declarations are handled at the beginning of their block
+  -- TODO: Mark the variable as having been declared, so that variables cannot be accessed before
+  -- they have been declared
 end
 
 pst['return'] = function(ctx, ast_stmt)
@@ -371,7 +360,6 @@ pst['return'] = function(ctx, ast_stmt)
     -- Put return expression
     local reg_x = put_expression(ctx, expr)
     emit(ctx, ir.mov('i0', reg_x))
-    pop_temp_reg(ctx)
   end
   emit(ctx, ir.ret())
 end
@@ -379,7 +367,6 @@ end
 function pst.assign(ctx, ast_stmt)
   local reg = put_expression(ctx, ast_stmt.expression)
   emit(ctx, ir.mov(find_variable(ctx, ast_stmt.name), reg))
-  pop_temp_reg(ctx)
 end
 
 function pst.block(ctx, ast_stmt)

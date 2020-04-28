@@ -3,6 +3,56 @@
 -- IR - (I)ntermediate (R)epresentation
 ----------------------------------------------------------------------------------------------------
 
+local pprint = require 'pprint'
+
+--[[
+
+mov
+neg
+bnot
+lnot
+add
+sub
+mul
+div
+eq
+neq
+lt
+gt
+leq
+geq
+salloc
+sfree
+begincall
+endcall
+call
+ret
+label
+jmp
+jeq
+jneq
+jz
+jnz
+jlt
+jgt
+jleq
+jgeq
+subroutine
+
+]]
+
+local function deepcopy(t)
+  r = { }
+  for k,v in pairs(t) do
+    if v.type == 'table' then
+      r[k] = deepcopy(v)
+    else
+      r[k] = v
+    end
+  end
+  return r
+end
+
 ----------------------------------------------------------------------------------------------------
 -- Tree construction
 
@@ -372,7 +422,7 @@ local function dump_statement(stmt)
   end
 end
 
-local function dump_subroutine(subr)
+function ir.dump_subroutine(subr)
   io.write('  ; temp_count: '..subr.meta.temp_count..'\n')
   io.write('sub '..subr.name..' (')
   for i,arg_type in ipairs(subr.arguments) do
@@ -395,9 +445,179 @@ local function dump_subroutine(subr)
   io.write('\n')
 end
 
-function ir.dump(ir)
-  for i,subr in ipairs(ir.subroutines) do
-    dump_subroutine(subr)
+-- Pretty-prints the given IR program object to io.output
+function ir.dump(ir_prog)
+  for i,subr in ipairs(ir_prog.subroutines) do
+    ir.dump_subroutine(subr)
+  end
+end
+
+----------------------------------------------------------------------------------------------------
+-- Opcode information
+
+local function inputs(stmt)
+  -- Quadruplet representation makes this convenient
+  return stmt.register_x, stmt.register_y
+end
+
+local function outputs(stmt)
+  -- Quadruplet representation makes this convenient
+  return stmt.register_z
+end
+
+----------------------------------------------------------------------------------------------------
+-- Other utilities
+
+function ir.dup(ir_any)
+  -- No metatables or recursion to worry about here -we can easily duplicate any portion of any IR
+  -- object.
+  return deepcopy(ir_any)
+end
+
+-- Computes the maximum lifetime interval for non-input and non-argument registers
+-- Returns each an array of register names and their intervals, in order of first start index
+local function compute_max_lifetimes(subr)
+  local end_idx = { }
+  local seen = { }
+  local lifetimes = { }
+  local n = #subr.statements
+  -- Search backward to find last reference to each register
+  for k=n,1,-1 do
+    local ir_stmt = subr.statements[k]
+    local reg_x, reg_y = inputs(ir_stmt)
+    if reg_x and not end_idx[reg_x] then
+      local c = reg_x:sub(1,1)
+      if c ~= 'a' and c ~= 'i' then
+        end_idx[reg_x] = k
+      end
+    end
+    if reg_y and not end_idx[reg_y] then
+      local c = reg_y:sub(1,1)
+      if c ~= 'a' and c ~= 'i' then
+        end_idx[reg_y] = k
+      end
+    end
+  end
+  -- Search forward to find first definition of each register, and when found, attempt to create an
+  -- interval with an associated end index
+  for k=1,n do
+    local ir_stmt = subr.statements[k]
+    local reg_z = outputs(ir_stmt)
+    if reg_z and not seen[reg_z] then
+      -- Mark visited
+      seen[reg_z] = true
+      local c = reg_z:sub(1,1)
+      if c ~= 'a' and c ~= 'i' then
+        -- Potential first definition
+        local k_begin = k
+        local k_end = end_idx[reg_z]
+        if k_end and k_end > k_begin then
+          -- We also happen to be iterating in order of start index, so add it to the result
+          table.insert(lifetimes, { reg = reg_z, k_begin = k_begin, k_end = k_end })
+        end
+      end
+    end
+  end
+  return lifetimes
+end
+
+-- Quick imlpementation of the linear scan algorithm
+-- web.cs.ucla.edu/~palsberg/course/cs132/linearscan.pdf
+-- Converts the given subroutine into one which relies on only the given temporary registers
+function ir.allocate_registers_lsra(subr, num_target_regs)
+  -- Compute lifetimes of each register
+  local lifetimes = compute_max_lifetimes(subr)
+  for k,interval in ipairs(lifetimes) do
+    io.write(interval.reg..' is live on ['..interval.k_begin..', '..interval.k_end..')\n')
+  end
+  -- List of live variables/intervals, in order of increasing k_end
+  local active = { }
+  -- Generate list of free "hardware" registers
+  local free_regs = { }
+  for k=1,num_target_regs do
+    free_regs[k] = 'r'..(k-1)
+  end
+  local new_mapping = { }
+  -- Erase active intervals which have ended
+  local function expire_old(k)
+    local n = #active
+    -- Partially remove expired ranges
+    for j=1,n do
+      local interval_j = active[j]
+      if interval_j.k_end >= k then
+        -- This interval is still going, so the rest are too. Exit early
+        break
+      else
+        active[j] = nil
+        -- Free now
+        table.insert(free_regs, interval_j.target_reg)
+      end
+    end
+    -- Purge nil values
+    local j = 1
+    for i=1,n do
+      local value = active[i]
+      if value then
+        if i ~= j then
+          active[j] = active[i]
+          active[i] = nil
+        end
+        j = j + 1
+      end
+    end
+  end
+  -- Inserts an interval into active set, maintaining order
+  local function add_active(interval)
+    local n = #active
+    if n == 0 then
+      active[1] = interval
+    else
+      for j=1,n do
+        local interval_j = active[j]
+        if interval.k_end <= interval_j.k_end then
+          local tmp
+          for k=j,n do
+            tmp = active[k]
+            active[k] = interval
+            interval = tmp
+          end
+          break
+        end
+      end
+      active[n+1] = interval
+    end
+  end
+  -- Main loop
+  for k,interval_i in ipairs(lifetimes) do
+    expire_old(interval_i.k_begin)
+    if #active == num_target_regs then
+      pprint(active)
+      pprint(free_regs)
+      error('TODO: Implement spilling\n')
+    else
+      local ir_reg = interval_i.reg
+      local target_reg = table.remove(free_regs, 1)
+      io.write(ir_reg..' <- '..target_reg..'\n')
+      new_mapping[ir_reg] = target_reg
+      interval_i.target_reg = target_reg
+      add_active(interval_i)
+    end
+  end
+  -- Reindex everything according to remapped registers
+  for k,ir_stmt in ipairs(subr.statements) do
+    local new_reg
+    if ir_stmt.register_x then
+      new_reg = new_mapping[ir_stmt.register_x]
+      if new_reg then ir_stmt.register_x = new_reg end
+    end
+    if ir_stmt.register_y then
+      new_reg = new_mapping[ir_stmt.register_y]
+      if new_reg then ir_stmt.register_y = new_reg end
+    end
+    if ir_stmt.register_z then
+      new_reg = new_mapping[ir_stmt.register_z]
+      if new_reg then ir_stmt.register_z = new_reg end
+    end
   end
 end
 
