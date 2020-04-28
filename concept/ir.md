@@ -10,7 +10,7 @@ An IR program consists of a list of IR subroutines and a list of global variable
 
 ## Subroutine
 
-Each IR subroutine defines its name, argument types, and its list of instructions. For example:
+Each IR subroutine defines its name, argument types, and list of instructions. For example:
 
     sub func1(int,int : int)
       ret
@@ -68,7 +68,7 @@ Stack space is cumulative, so the following snippet is functionally equivalent t
 When a subroutine is called with arguments, those arguments are present in a block of registers
 known as __input registers__. The block is shared by both arguments and return values of the
 subroutine, so there are as many input registers as there are arguments or return values, whichever
-is more. Input register names start with an 'i' and are followed by a non-negative integer
+requires more. Input register names start with an 'i' and are followed by a non-negative integer
 indicating their argument/return value index.
 
 The following snippet returns the sum of its arguments in its first return value, and the difference
@@ -85,10 +85,10 @@ of its arguments in the second. In a certain sense, it performs a transformation
 
 In order to exchange arguments and return values with a subroutine, a block of __argument
 registers__ is allocated by the calling function. The caller populates the argument registers with
-the subroutine arguments, calls the subroutine, and reads the results from the same registers.
+the subroutine arguments, executes the subroutine, and reads the results from the same registers.
 Argument register names start with an 'a' and are followed by a non-negative integer, indicating
 their argument/return value index. These indices correspond direcly to the input register indices of
-the called function, i.e.: a0 <-> i0, a1 <-> i1, etc.
+the called function, i.e.: a0 &#x2194; i0, a1 &#x2194; i1, etc.
 
 The following snippet calls the function of the previous example, and stores its results in
 temporary registers before returning.
@@ -105,5 +105,5 @@ temporary registers before returning.
 
 The use of argument registers is only valid after a begincall instruction, and before its
 corresponding endcall instruction. An argument register always corresponds to the argument register
-of the most recent begincall instruction.
+of the current begincall instruction.
 
