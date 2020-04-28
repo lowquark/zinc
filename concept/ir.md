@@ -88,7 +88,7 @@ registers__ is allocated by the calling function. The caller populates the argum
 the subroutine arguments, executes the subroutine, and reads the results from the same registers.
 Argument register names start with an 'a' and are followed by a non-negative integer, indicating
 their argument/return value index. These indices correspond direcly to the input register indices of
-the called function, i.e.: a0 &#x2194; i0, a1 &#x2194; i1, etc.
+the called function, i.e.: a0 &#x21D4; i0, a1 &#x21D4; i1, etc.
 
 The following snippet calls the function of the previous example, and stores its results in
 temporary registers before returning.
