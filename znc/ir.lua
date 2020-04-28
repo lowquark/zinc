@@ -240,7 +240,7 @@ function ir.jz(label_name, reg)
   assert(reg)
   return { type = 'jz',
            label_name = label_name,
-           register = reg }
+           register_x = reg }
 end
 -- Jump if nonzero
 function ir.jnz(label_name, reg)
@@ -248,7 +248,7 @@ function ir.jnz(label_name, reg)
   assert(reg)
   return { type = 'jnz',
            label_name = label_name,
-           register = reg }
+           register_x = reg }
 end
 -- Jump if less than
 function ir.jlt(label_name, reg_x, reg_y)
@@ -381,10 +381,10 @@ function sst.jmp(stmt)
   return 'goto '..stmt.label_name
 end
 function sst.jz(stmt)
-  return 'if !'..stmt.register..' goto '..stmt.label_name
+  return 'if !'..stmt.register_x..' goto '..stmt.label_name
 end
 function sst.jnz(stmt)
-  return 'if '..stmt.register..' goto '..stmt.label_name
+  return 'if '..stmt.register_x..' goto '..stmt.label_name
 end
 function sst.jeq(stmt)
   return 'if '..stmt.register_x..' == '..stmt.register_y..' goto '..stmt.label_name

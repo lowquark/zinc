@@ -1,2 +1,3 @@
-/test
-/test.s
+/asm.s
+/bench.s
+/bench

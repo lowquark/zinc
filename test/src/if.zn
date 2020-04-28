@@ -1,0 +1,25 @@
+
+module my_module {
+  function main() -> (int64 ret) {
+    int64 b;
+    b = 0;
+
+    if(1) {
+      b = b + 1;
+    }
+
+    if(0) {
+    } else if(1) {
+      b = b + 2;
+    }
+
+    if(0) {
+    } else if(0) {
+    } else {
+      b = b + 4;
+    }
+
+    return b;
+  }
+}
+

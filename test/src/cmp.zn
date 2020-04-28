@@ -1,0 +1,32 @@
+
+module my_module {
+  function main() -> (int64 ret) {
+    int64 a;
+    int64 b;
+
+    a = 10;
+    b = 0;
+
+    if(a == 10) {
+      b = b + 1;
+    }
+    if(a != 10) {
+      b = b + 2;
+    }
+    if(a < 10) {
+      b = b + 4;
+    }
+    if(a > 10) {
+      b = b + 8;
+    }
+    if(a <= 10) {
+      b = b + 16;
+    }
+    if(a >= 10) {
+      b = b + 32;
+    }
+
+    return b;
+  }
+}
+
