@@ -349,9 +349,15 @@ pst['if'] = function(ctx, ast_stmt)
 end
 
 pst['local'] = function(ctx, ast_stmt)
-  -- Do nothing - local variable declarations are handled at the beginning of their block
-  -- TODO: Mark the variable as having been declared, so that variables cannot be accessed before
-  -- they have been declared
+  local name = ast_stmt.name
+  if ctx.local_scope[name] then
+    error('`'..name..'` was already declared in this scope.')
+  else
+    -- Allocate a new temporary register to this variable
+    local reg = new_temp_reg(ctx)
+    ctx.local_scope[name] = reg
+    io.write('local `'..name..'` is in stack register '..reg..'\n')
+  end
 end
 
 pst['return'] = function(ctx, ast_stmt)
@@ -370,45 +376,14 @@ function pst.assign(ctx, ast_stmt)
 end
 
 function pst.block(ctx, ast_stmt)
-  -- Search ahead for local variables declared in this block, and allocate one or more stack
-  -- registers to each
-  local k = ctx.stack_index
-  local alloc_size = 0
-  local new_scope = dupscope(ctx.local_scope)
-  for _,ast_substmt in ipairs(ast_stmt) do
-    if ast_substmt.type == 'local' then
-      local name = ast_substmt.name
-      if new_scope[name] then
-        error('`'..name..'` was already declared in this scope.')
-      else
-        -- Allocate the next stack index to this variable
-        local reg = 's'..k
-        new_scope[name] = reg
-        k = k + 1
-        alloc_size = alloc_size + 1
-        io.write('local `'..name..'` is in stack register '..reg..'\n')
-      end
-    end
-  end
-  -- Save the current stack index and local variables
-  local stack_index_prev = ctx.stack_index
+  -- Save current scope
   local local_scope_prev = ctx.local_scope
-  ctx.stack_index = ctx.stack_index + alloc_size
-  ctx.local_scope = new_scope
-  -- Emit stack allocation instruction, if needed
-  if alloc_size ~= 0 then
-    emit(ctx, ir.salloc(alloc_size))
-  end
+  ctx.local_scope = dupscope(ctx.local_scope)
   -- Emit substatements
   for i,ast_substmt in ipairs(ast_stmt) do
     put_statement(ctx, ast_substmt)
   end
-  -- Emit stack deallocation instruction, if needed
-  if alloc_size ~= 0 then
-    emit(ctx, ir.sfree(alloc_size))
-  end
-  -- Restore stack index and local variables
-  ctx.stack_index = stack_index_prev
+  -- Restore scope
   ctx.local_scope = local_scope_prev
 end
 
@@ -439,7 +414,6 @@ local function compile_subroutine(ctx, ast_func)
   ctx.temp_index_max = 0
   -- This function's scope -> IR register map
   ctx.local_scope = local_scope
-  ctx.stack_index = 0
   -- Counter for unique label generation
   ctx.label_index = 0
   -- Read statements from AST

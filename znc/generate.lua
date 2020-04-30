@@ -1,9 +1,42 @@
 
-local ir = require 'ir'
-
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Generate x86-64 code from IR
---------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
+
+local ir = require 'ir'
+local lsra = require 'lsra'
+
+-- These registers must be preserved accross function calls
+--   %rbx
+--   %rbp
+--   %r12
+--   %r13
+--   %r14
+--   %r15
+--
+-- These registers are used for memory reads and backing up values
+--   %rax
+--   %rcx
+
+-- (o)perand (t)emporary (r)egister (t)able
+local otrt = {
+  '%rbx',
+  '%rdx',
+  '%r8',
+  '%r9',
+  '%r10',
+  '%r11',
+}
+
+local rbft = {
+  ['%rbx'] = '%bl',
+  ['%rdx'] = '%dl',
+  ['%r8'] = '%r8b',
+  ['%r9'] = '%r9b',
+  ['%r10'] = '%r10b',
+  ['%r11'] = '%r11b',
+}
+
 
 local function emit(ctx, instr)
   ctx.outfile:write('\t'..instr..'\n')
@@ -51,17 +84,6 @@ local function emit_stack_dealloc(ctx, size)
   ctx.stack_index = ctx.stack_index - size
 end
 
--- (o)perand (t)emporary (r)egister (t)able
-local otrt = {
-  '%rax',
-  '%rcx',
-  '%rdx',
-  '%r8',
-  '%r9',
-  '%r10',
-  '%r11',
-}
-
 local function operand(ctx, name)
   local typestr = string.sub(name, 1, 1)
   if typestr == 'r' then
@@ -78,7 +100,7 @@ local function operand(ctx, name)
     if op then
       return op, 'register'
     else
-      error('TODO: Implement spilling')
+      error('No hardware register available for '..name)
       --return tostring(-8*(index-1))..'(%rbp)', 'memory'
     end
   elseif typestr == 's' then
@@ -125,24 +147,6 @@ local function operand(ctx, name)
   end
 end
 
--- These registers must be preserved:
---   %rbx
---   %rbp
---   %r12
---   %r13
---   %r14
---   %r15
--- These registers are fair game
-local rbft = {
-  ['%rax'] = '%al',
-  ['%rcx'] = '%cl',
-  ['%rdx'] = '%dl',
-  ['%r8'] = '%r8b',
-  ['%r9'] = '%r9b',
-  ['%r10'] = '%r10b',
-  ['%r11'] = '%r11b',
-}
-
 local function reg_byte_form(op, type)
   if type == 'register' then
     local r = rbft[op]
@@ -160,15 +164,14 @@ local function emit_mov(ctx, op_x, type_x, op_z, type_z)
   if type_z == 'literal' then error('Invalid instruction') end
   -- Optimize out useless moves
   if op_x == op_z then return end
-  -- Move if possible
+  -- Move directly if possible
   if type_x == 'register' or type_z == 'register' then
-    -- If either is a register, only one memory reference is possible
+    -- If either is a register, only one memory reference will be possible
     emit(ctx, 'mov  '..op_x..', '..op_z)
   else
-    emit(ctx, 'push %rax')
+    -- Into the accumulator it goes
     emit(ctx, 'mov  '..op_x..', %rax')
     emit(ctx, 'mov  %rax, '..op_z)
-    emit(ctx, 'pop  %rax')
   end
 end
 
@@ -179,18 +182,16 @@ local function emit_binary_arith_op(ctx, instr, ir_stmt)
   -- Destination can't be a literal, that doesn't make any damn sense
   if type_z == 'literal' then error('Invalid instruction') end
   if type_z == 'register' then
-    -- op_z is a register, so only a single memory reference is possible here
+    -- op_z is a register, so only a single memory reference will be possible here
     if op_x ~= op_z then
       emit(ctx, 'mov  '..op_x..', '..op_z)
     end
     emit(ctx, instr..' '..op_y..', '..op_z)
   else
-    -- Have to push something otherwise, and destination must be a register
-    emit(ctx, 'push %rax')
+    -- Into the accumulator it goes
     emit(ctx, 'mov  '..op_x..', %rax')
     emit(ctx, instr..' '..op_y..', %rax')
     emit(ctx, 'mov  %rax, '..op_z)
-    emit(ctx, 'pop  %rax')
   end
 end
 
@@ -200,19 +201,23 @@ local function emit_comparison(ctx, set_instr, ir_stmt)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   -- Destination can't be a literal, that doesn't make any damn sense
   if type_z == 'literal' then error('Invalid instruction') end
-  if type_x == 'register' or type_z == 'register' then
-    -- Either is a register, so only a single memory reference is possible here
-    emit(ctx, 'cmp  '..op_x..', '..op_y)
+
+  if type_z == 'register' then
+    -- op_z is a register, so only a single memory reference will be possible here
+    if op_x ~= op_z then
+      emit(ctx, 'mov  '..op_x..', '..op_z)
+    end
+    emit(ctx, 'cmp  '..op_z..', '..op_y)
+    emit(ctx, 'mov  $0, '..op_z)
+    emit(ctx, set_instr..' '..reg_byte_form(op_z, type_z))
   else
-    -- Have to push something otherwise
-    emit(ctx, 'push %rax')
+    -- Into the accumulator it goes
     emit(ctx, 'mov  '..op_x..', %rax')
     emit(ctx, 'cmp  %rax, '..op_y)
-    emit(ctx, 'pop  %rax')
+    emit(ctx, 'mov  $0, %rax')
+    emit(ctx, set_instr..' %al')
+    emit(ctx, 'mov  %rax, '..op_z)
   end
-  -- Clear result and set based on condition
-  emit(ctx, 'mov  $0, '..op_z)
-  emit(ctx, set_instr..' '..reg_byte_form(op_z, type_z))
 end
 
 local function emit_jump_comparison(ctx, jump_instr, ir_stmt)
@@ -221,14 +226,12 @@ local function emit_jump_comparison(ctx, jump_instr, ir_stmt)
   -- Destination can't be a literal, that doesn't make any damn sense
   if type_x == 'literal' and type_y == 'literal' then error('Invalid instruction') end
   if type_x == 'register' or type_z == 'register' then
-    -- Either is a register, so only a single memory reference is possible here
+    -- Either is a register, so only a single memory reference will be possible here
     emit(ctx, 'cmp  '..op_x..', '..op_y)
   else
-    -- Have to push something otherwise
-    emit(ctx, 'push %rax')
+    -- Into the accumulator it goes
     emit(ctx, 'mov  '..op_x..', %rax')
     emit(ctx, 'cmp  %rax, '..op_y)
-    emit(ctx, 'pop  %rax')
   end
   -- Jump based on condition
   emit(ctx, jump_instr..' '..convert_label(ctx, ir_stmt.label_name))
@@ -278,41 +281,27 @@ function est.mul(ctx, ir_stmt)
   emit_binary_arith_op(ctx, 'imul', ir_stmt)
 end
 function est.div(ctx, ir_stmt)
-  -- This implementation is most efficient if op_x and op_z are both r0; hence, if division is the
-  -- first element of its statement.
   -- Though, it's pretty marginal compared to how many cycles integer division itself takes.
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_y, type_y = operand(ctx, ir_stmt.register_y)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   if type_z == 'literal' then error('Invalid instruction') end
-  -- Backup %rax,%rdx if applicable
-  -- This backup flow control has an interesting pattern. We only push registers that would be
-  -- clobbered, and aren't the destination.
-  if op_z ~= '%rax' then
-    emit(ctx, 'push %rax')
-  end
+  -- Backup %rdx if applicable
   if op_z ~= '%rdx' then
-    emit(ctx, 'push %rdx')
+    emit(ctx, 'mov  %rdx, %rcx')
   end
   -- Place our dividend in %rax
-  if op_x ~= '%rax' then
-    emit(ctx, 'mov  '..op_x..', %rax')
-  end
+  emit(ctx, 'mov  '..op_x..', %rax')
   -- Sign extend %rax into %rdx.
   -- This clobbers %rdx, and kills the crab.
   emit(ctx, 'cqto')
   -- Divide [%rdx:%rax] by the divisor (op_y)
   emit(ctx, 'idivq '..op_y)
   -- Move the quotient into our destination (op_z)
-  if op_z ~= '%rax' then
-    emit(ctx, 'mov  %rax, '..op_z)
-  end
-  -- Restore %rax,%rdx if applicable
+  emit(ctx, 'mov  %rax, '..op_z)
+  -- Restore %rdx if applicable
   if op_z ~= '%rdx' then
-    emit(ctx, 'pop  %rdx')
-  end
-  if op_z ~= '%rax' then
-    emit(ctx, 'pop  %rax')
+    emit(ctx, 'mov  %rcx, %rdx')
   end
 end
 
@@ -415,31 +404,27 @@ function emit_statement(ctx, ir_stmt)
 end
 
 local function emit_subroutine(ctx, ir_subr)
+  ctx.temp_count = ir_subr.meta.temp_count
+  ctx.input_size = math.max(#ir_subr.arguments, #ir_subr.returns)
+  ctx.call_data_stack = { }
+  ctx.stack_index = 0
   -- Emit header
   emit(ctx, '.globl '..ir_subr.name)
   emit(ctx, '.type '..ir_subr.name..', @function')
   emit_label(ctx, ir_subr.name)
   emit_prologue(ctx)
-  -- We may need to do our own temporary register allocation/analysis in order to efficiently
-  -- translate. After all, we track our own stack index. Perhaps this should eventually mean
-  -- transforming the IR into something acceptable, rather than allocating registers on the fly.
-  ctx.temp_count = ir_subr.meta.temp_count
-  ctx.input_size = math.max(#ir_subr.arguments, #ir_subr.returns)
-  ctx.call_data_stack = { }
-  ctx.stack_index = 0
+  -- Reserve stack space for this function (part of the header, really)
+  emit_stack_alloc(ctx, ir_subr.stack_size)
   -- Emit statements
   for i,ir_stmt in ipairs(ir_subr.statements) do
     emit_comment(ctx, ir.statement_string(ir_stmt))
     emit_statement(ctx, ir_stmt)
   end
-  -- Emit default footer
-  emit(ctx, 'mov $0, %rax')
-  emit_epilogue(ctx)
-end
-
-local function convert_subroutine(ir_subr)
-  local subr_out = ir.dup(ir_subr)
-  return subr_out
+  -- Emit default return statement if the last one wasn't one
+  local n = #ir_subr.statements
+  if n == 0 or ir_subr.statements[n].type ~= 'ret' then
+    emit_epilogue(ctx)
+  end
 end
 
 local function generate(ir_all, outfile)
@@ -453,8 +438,11 @@ local function generate(ir_all, outfile)
   emit_line(ctx)
 
   for i,ir_subr in ipairs(ir_all.subroutines) do
-    ir.allocate_registers_lsra(ir_subr, 7)
+    -- Allocate hardware registers
+    lsra(ir_subr, #otrt)
+    -- Print to console for shits and giggles
     ir.dump_subroutine(ir_subr)
+    -- Generate code
     emit_subroutine(ctx, ir_subr)
     emit_line(ctx)
     ctx.subroutine_id = ctx.subroutine_id + 1
@@ -467,7 +455,7 @@ local function generate(ir_all, outfile)
   emit(ctx, 'mov  %rsp, %rbp')
   emit(ctx, 'sub  $8, %rsp')
   emit(ctx, 'call my_module$main')
-  emit(ctx, 'mov  -8(%rbp), %eax')
+  emit(ctx, 'mov  -8(%rbp), %rax')
   emit(ctx, 'add  $8, %rsp')
   emit(ctx, 'mov  %rbp, %rsp')
   emit(ctx, 'pop  %rbp')
