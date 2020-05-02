@@ -294,7 +294,10 @@ local function parse_abort_expected(L, ...)
       expstr = expstr..', '
     end
   end
-  actstr = token_type_strings[L.next.type]
+  local actstr = token_type_strings[L.next.type]
+  if not actstr then
+    actstr = 'unknown token'
+  end
   io.write('Error on line '..L.line..', col '..L.col..': Expected '..expstr..'; got '..actstr..'\n')
   io.write(debug.traceback())
   os.exit(3)
