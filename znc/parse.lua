@@ -6,6 +6,8 @@
 local ast = require 'ast'
 local Lexer = require 'Lexer'
 
+local pprint = require 'pprint'
+
 ----------------------------------------------------------------------------------------------------
 -- Parser
 
@@ -28,25 +30,29 @@ Full parser grammar, in extended BNF:
 <expression-p6> := <expression-p5> { '||' <expression-p5> }
 <expression> := <expression-p6>
 
+<type-specifier> := [ 'const' ] <name_path> [ '&' ]
+
 <arguments> := <expression> { ',' <expression> }
-<argument-declarations> := <name-path> <name> { ',' <name-path> <name> }
+<argument-declarations> := <type-specifier> <name> { ',' <type-specifier> <name> }
+
+<return-statement> := 'return' [ <expression> ] ';'
+
+<block> := '{' { <statement> } '}'
 
 <if-body> := 'if' '(' <expression> ')' <block>
 <else-body> := 'else' ( <if-body> [ <else-body> ] | <block> )
 <if-statement> := <if-body> [ <else-body> ]
 
-<type> := { 'const' | 'opt' } <name_path> [ '&' ]
-<lvalue> := <type> <name> | <name_path>
-<assignment> := <lvalue> { ',' <lvalue> } [ '=' <expression> { ',' <expression> } ] ';'
 <function-call> := <name-path> '(' [ <arguments> ] ')'
 
-<statement> := 'return' [ <expression> ] ';'
-             | <if-statement>
+<lvalue> := <type-specifier> <name> | <name_path>
+<assignment> := <lvalue> { ',' <lvalue> } [ '=' <expression> { ',' <expression> } ] ';'
+
+<statement> := <return-statement>
              | <block>
+             | <if-statement>
              | <function-call>
              | <assignment>
-
-<block> := '{' { <statement> } '}'
 
 <function-declaration> := 'function' <name> '(' [ <argument-declarations> ] ')'
                           [ '->' '(' [ <argument-declarations> ] ')' ]
@@ -247,11 +253,36 @@ local function parse_struct_declaration(L)
   end
 end
 
+-- Tries to parse the rule: <type-specifier>
+-- Returns the AST object for a type specifier
+local function parse_type_specifier(L)
+  local st = L:state()
+  local const = parse_token(L, 'const')
+  local name_path = parse_name_path(L)
+  if not name_path then
+    -- Not actually a type, boo
+    L:reset(st)
+    return
+  end
+  local ref = parse_token(L, 'binand')
+  return ast.type_specifier(name_path, const, ref)
+end
+
+-- Expects to parse the rule: <type>
+-- Returns the AST object for a type
+local function expect_type_specifier(L)
+  local t = parse_type_specifier(L)
+  if t then
+    return t
+  else
+    parse_abort_expected(L, 'type specifier')
+  end
+end
 
 -- Tries to parse: [ <argument-list> ]
 -- Returns the AST object for an argument list
 -- Returns an empty list if no expressions could be read
-local function parse_arguments(L)
+local function parse_argument_list(L)
   local list = {}
   local expr = parse_expression(L)
   if expr then
@@ -311,7 +342,7 @@ local function parse_expression_p0(L)
       local args
       -- This might be a function call
       if parse_token(L, 'lparen') then
-        args = parse_arguments(L)
+        args = parse_argument_list(L)
         expect_token(L, 'rparen')
       end
 
@@ -526,32 +557,91 @@ function parse_if_statement(L)
   end
 end
 
--- Tries to parse the rule: <type>
--- Returns the AST object for a type
-function parse_type_specifier(L)
+-- Tries to parse the rule: <function-call>
+-- Returns the AST object for a function call statement
+local function parse_function_call(L)
   local st = L:state()
-  while L.next.type == 'const' or L.next.type == 'opt' do
-    -- Just eat, none of this matters yet
-    L:read()
-  end
   local name_path = parse_name_path(L)
-  if not name_path then
-    -- Not actually a type, boo
-    L:reset(st)
-    return
+  if name_path then
+    -- Try to read an lparen
+    if parse_token(L, 'lparen') then
+      -- Read function call argument list
+      local args = parse_argument_list(L)
+      expect_token(L, 'rparen')
+      expect_token(L, 'semicolon')
+      return ast.stmt_function_call(name_path, args)
+    end
   end
-  local ref = parse_token(L, 'binand')
-  return ast.type_specifier(name_path, ref)
+  L:reset(st)
 end
 
--- Expects to parse the rule: <type>
--- Returns the AST object for a type
-function expect_type_specifier(L)
-  local t = parse_type_specifier(L)
-  if t then
-    return t
-  else
-    parse_abort_expected(L, 'type specifier')
+-- Tries to parse the rule: <lvalue>
+-- Returns the AST object for an lvalue
+local function parse_lvalue(L)
+  -- <type-specifier> <name>
+  local st = L:state()
+  local type_spec = parse_type_specifier(L)
+  if type_spec then
+    local name = parse_name(L)
+    if name then
+      return ast.lvalue_declaration(type_spec, name)
+    end
+  end
+  -- <name-path> 
+  L:reset(st)
+  local name_path = parse_name_path(L)
+  if name_path then
+    return ast.lvalue_reference(name_path, {})
+  end
+end
+
+-- Expects to parse the rule: <lvalue>
+-- Returns the AST object for an lvalue
+local function expect_lvalue(L)
+  local lvalue = parse_lvalue(L)
+  if not lvalue then
+    parse_abort_expected(L, 'lvalue')
+  end
+  return lvalue
+end
+
+-- Tries to parse the rule: <assignment>
+-- Returns the AST object for an assignment statement
+local function parse_assignment(L)
+  local lvalue_list = {}
+  local expr_list = {}
+  -- Assignment begins with an lvalue
+  local lvalue = parse_lvalue(L)
+  if not lvalue then return end
+  table.insert(lvalue_list, lvalue)
+  -- Keep reading lvalues if given
+  while parse_token(L, 'comma') do
+    lvalue = expect_lvalue(L)
+    table.insert(lvalue_list, lvalue)
+  end
+  -- True assigment requires an equals sign, but local variable declarations need not have one
+  if parse_token(L, 'equals') then
+    local expr = expect_expression(L)
+    table.insert(expr_list, expr)
+    -- Keep reading expressions if given
+    while parse_token(L, 'comma') do
+      expr = expect_expression(L)
+      table.insert(expr_list, expr)
+    end
+  end
+  -- And that's the statement
+  expect_token(L, 'semicolon');
+  return ast.stmt_assignment(lvalue_list, expr_list)
+end
+
+-- Tries to parse the rule: <return-statement>
+-- Returns the AST object for a return statement
+local function parse_return_statement(L)
+  if parse_token(L, 'return') then
+    -- Easiest statement ever
+    local stmt = ast.stmt_return(parse_expression(L))
+    expect_token(L, 'semicolon')
+    return stmt
   end
 end
 
@@ -559,46 +649,22 @@ end
 -- Returns the AST object for a statement
 function expect_statement(L)
   local stmt
-  if parse_token(L, 'return') then
-    -- Easiest statement ever
-    stmt = ast.stmt_return(parse_expression(L))
-    expect_token(L, 'semicolon')
-    return stmt
-  end
-  stmt = parse_if_statement(L)
+  -- <return-statement>
+  stmt = parse_return_statement(L)
   if stmt then return stmt end
+  -- <block>
   stmt = parse_block(L)
   if stmt then return stmt end
-  local first_name = parse_name(L)
-  if first_name then
-    -- Reading a name at the beginning of a statement is pretty ambiguous
-    if parse_token(L, 'equals') then
-      -- Assigning first_name from expr
-      local expr = expect_expression(L)
-      expect_token(L, 'semicolon')
-      -- That's a variable assignment
-      return ast.stmt_assign(first_name, expr)
-    end
-    -- Read remainder of path, if applicable (first name already known)
-    name_path = parse_name_path_rest(L, first_name)
-    -- Try to read a name
-    local name = parse_name(L)
-    if name then
-      -- name_path is a local variable declaration's type
-      expect_token(L, 'semicolon')
-      -- That's the declaration, me boy
-      return ast.stmt_local_declaration(name_path, name)
-    end
-    -- Try to read an lparen
-    if parse_token(L, 'lparen') then
-      -- Read function call argument list
-      local args = parse_arguments(L)
-      expect_token(L, 'rparen')
-      expect_token(L, 'semicolon')
-      return ast.stmt_function_call(name_path, args)
-    end
-    parse_abort_expected(L, 'equals', 'colon', 'name', 'lparen')
-  end
+  -- <if-statement>
+  stmt = parse_if_statement(L)
+  if stmt then return stmt end
+  -- <function-call>
+  stmt = parse_function_call(L)
+  if stmt then return stmt end
+  -- <assignment>
+  stmt = parse_assignment(L)
+  if stmt then return stmt end
+  -- :c
   parse_abort_expected(L, 'statement')
 end
 

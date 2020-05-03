@@ -12,10 +12,23 @@ function ast.name_path()
   return { }
 end
 
-function ast.type_specifier(name_path, ref)
+function ast.type_specifier(name_path, const, ref)
   assert(name_path)
+  assert(type(const) == 'boolean')
   assert(type(ref) == 'boolean')
-  return { type = 'type-specifier', name_path = name_path, ref = ref }
+  return { name_path = name_path, const = const, ref = ref }
+end
+
+function ast.lvalue_declaration(type_spec, name)
+  assert(type_spec)
+  assert(name)
+  return { type = 'declaration', type_specifier = type_spec, name = name }
+end
+
+function ast.lvalue_reference(name_path, index_exprs)
+  assert(name_path)
+  assert(index_exprs)
+  return { type = 'reference', name_path = name_path, index_exprs = index_exprs }
 end
 
 -- Expressions: (The list is long)
@@ -163,6 +176,13 @@ function ast.stmt_assign(name, expr)
            name = name,
            expression = expr }
 end
+function ast.stmt_assignment(lvalue_list, expr_list)
+  assert(lvalue_list)
+  assert(expr_list)
+  return { type = 'assignment',
+           lvalues = lvalue_list,
+           expressions = expr_list }
+end
 function ast.stmt_function_call(name_path, args)
   assert(name_path)
   assert(args)
@@ -227,11 +247,27 @@ local dump_expr
 local dump_stmt
 
 local function type_spec_str(type_spec)
-  local str = table.concat(type_spec.name_path, ':')
+  local str = ''
+  if type_spec.const then
+    str = str..'const '
+  end
+  str = str..table.concat(type_spec.name_path, ':')
   if type_spec.ref then
     str = str..' &'
   end
   return str
+end
+
+function dump_lvalue(lvalue, level)
+  local level = level or 0
+  local indent = string.rep('  ', level)
+  if lvalue.type == 'declaration' then
+    io.write(indent..'DECLARATION '..type_spec_str(lvalue.type_specifier)..' '..lvalue.name..'\n')
+  elseif lvalue.type == 'reference' then
+    io.write(indent..'REFERENCE '..table.concat(lvalue.name_path, ':')..'\n')
+  else
+    error('unknown lvalue type `'..lvalue.type..'`')
+  end
 end
 
 function dump_expr(expr, level)
@@ -263,14 +299,23 @@ end
 function dump_stmt(stmt, level)
   local level = level or 0
   local indent = string.rep('  ', level)
+  local indent2 = string.rep('  ', level+1)
   if stmt.type == 'return' then
     io.write(indent..'RETURN\n')
     if stmt.expression then
       dump_expr(stmt.expression, level+1)
     end
-  elseif stmt.type == 'assign' then
-    io.write(indent..'ASSIGN '..stmt.name..'\n')
-    dump_expr(stmt.expression, level+1)
+  elseif stmt.type == 'assignment' then
+    io.write(indent..'ASSIGNMENT\n')
+    for i,lvalue in ipairs(stmt.lvalues) do
+      dump_lvalue(lvalue, level+1)
+    end
+    if #stmt.expressions > 0 then
+      io.write(indent2..':=\n')
+      for i,expr in ipairs(stmt.expressions) do
+        dump_expr(expr, level+2)
+      end
+    end
   elseif stmt.type == 'local' then
     io.write(indent..'LOCAL '..stmt.name..' : '..table.concat(stmt.type_name_path,':')..'\n')
   elseif stmt.type == 'if' then

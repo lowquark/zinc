@@ -2,8 +2,6 @@
 ----------------------------------------------------------------------------------------------------
 -- Lexer
 
-local pprint = require 'pprint'
-
 local function token(type, value)
   local tok = { type = type, value = value }
   return tok
@@ -37,7 +35,6 @@ local keyword_set = {
   ['function'] = true,
   ['if'] = true,
   ['module'] = true,
-  ['opt'] = true,
   ['return'] = true,
   ['struct'] = true,
 }
@@ -165,7 +162,7 @@ local function read(L)
         c = readc(L)
         return yield(L, token 'cmpeq')
       else
-        return yield(L, token 'equals')
+        return yield(L, token 'equals') -- TODO: Rename to 'equal'
       end
     elseif c == '\n' then
       c = readc(L)
@@ -200,7 +197,6 @@ local function Lexer(file)
 
   readc(L)
   L:read()
-  pprint(L)
 
   return L
 end

@@ -4,6 +4,7 @@
 ----------------------------------------------------------------------------------------------------
 
 local ir = require 'ir'
+local pprint = require 'pprint'
 
 --[[
 --
@@ -85,6 +86,19 @@ local function find_call(ctx, name_path)
     error('Function '..table.concat(name_path, ':')..' is undefined here.')
   end
   return subr
+end
+
+local function new_local_variable(ctx, type_spec, name)
+  -- TODO: Acknowledge type specifier
+  if ctx.local_scope[name] then
+    error('`'..name..'` was already declared in this scope.')
+  else
+    -- Allocate a new temporary register to this variable
+    local reg = new_temp_reg(ctx)
+    ctx.local_scope[name] = reg
+    io.write('local `'..name..'` is in register '..reg..'\n')
+    return reg
+  end
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -314,7 +328,6 @@ function put_call(ctx, name_path, arglist, return_num)
 end
 
 function put_statement(ctx, ast_stmt)
-  -- All temporary registers are free game at the beginning of a statement
   local h = pst[ast_stmt.type]
   if h then
     h(ctx, ast_stmt)
@@ -348,18 +361,6 @@ pst['if'] = function(ctx, ast_stmt)
   end
 end
 
-pst['local'] = function(ctx, ast_stmt)
-  local name = ast_stmt.name
-  if ctx.local_scope[name] then
-    error('`'..name..'` was already declared in this scope.')
-  else
-    -- Allocate a new temporary register to this variable
-    local reg = new_temp_reg(ctx)
-    ctx.local_scope[name] = reg
-    io.write('local `'..name..'` is in register '..reg..'\n')
-  end
-end
-
 pst['return'] = function(ctx, ast_stmt)
   local expr = ast_stmt.expression
   if expr then
@@ -373,6 +374,49 @@ end
 function pst.assign(ctx, ast_stmt)
   local reg = put_expression(ctx, ast_stmt.expression)
   emit(ctx, ir.mov(find_variable(ctx, ast_stmt.name), reg))
+end
+
+function pst.assignment(ctx, ast_stmt)
+  local dst_regs = {}
+  local src_regs = {}
+  -- Validate assignment configuration
+  local num_ex = #ast_stmt.expressions
+  local num_lv = #ast_stmt.lvalues
+  if num_lv ~= num_ex and num_ex > 0 then
+    error('Invalid assignment: cannot assign '..num_ex..' expressions to '..num_lv..' lvalues.')
+  end
+  -- Allocate/reference registers for lvalues
+  for i,ast_lvalue in ipairs(ast_stmt.lvalues) do
+    if ast_lvalue.type == 'declaration' then
+      local reg = new_local_variable(ctx, ast_lvalue.type_specifier, ast_lvalue.name)
+      table.insert(dst_regs, reg)
+    elseif ast_lvalue.type == 'reference' then
+      pprint(ast_lvalue)
+      if #ast_lvalue.name_path ~= 1 then
+        error('Fully-scoped referential lvalues not supported')
+      end
+      if #ast_lvalue.index_exprs ~= 0 then
+        error('Referential lvalues with index expressions not supported')
+      end
+      local name = ast_lvalue.name_path[1]
+      local reg = find_variable(ctx, name)
+      table.insert(dst_regs, reg)
+    else
+      error('Unknown lvalue type `'..ast_lvalue..'`')
+    end
+  end
+  if num_ex > 0 then
+    -- Put corresponding expressions
+    for i,ast_expr in ipairs(ast_stmt.expressions) do
+      local src_reg = put_expression(ctx, ast_expr)
+      table.insert(src_regs, src_reg)
+    end
+    for i=1,num_ex do
+      local src_reg = src_regs[i]
+      local dst_reg = dst_regs[i]
+      emit(ctx, ir.mov(dst_reg, src_reg))
+    end
+  end
 end
 
 function pst.block(ctx, ast_stmt)
@@ -403,8 +447,6 @@ local function compile_subroutine(ctx, ast_func)
     table.insert(subr.arguments, 'int64')
   end
   for i,ast_arg_decl in ipairs(ast_func.returns) do
-    local_scope[ast_arg_decl.name] = 'i'..tostring(k)
-    k = k + 1
     table.insert(subr.returns, 'int64')
   end
   -- Initialize subroutine context

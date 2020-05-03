@@ -15,18 +15,19 @@ module my_module {
   int64 var_a;
   int64 var_b;
 
-  function bla(int64 & a, int64 b, int64 c) -> (int64 d) {
+  function bla(const int64 & a, int64 b, int64 c) -> (int64 d) {
     return a + b + c;
   }
 
   function main() -> (int64 _) {
-    int64 r;
-    int64 u;
-    int64 v;
-    r = 5;
-    u = 5;
-    v = 5;
-    return my_module:bla(my_module:bla(r, r, r), u, v);
+    int64 r = 5;
+    int64 u = 5;
+    int64 v = 5;
+    int64 astro = my_module:bla(my_module:bla(r, r, r), u, v);
+    int64 a, int64 b = 5, 0;
+    a, b = b, a;
+    astro = astro + b;
+    return astro;
   }
 }
 
