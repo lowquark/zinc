@@ -356,7 +356,7 @@ pst['local'] = function(ctx, ast_stmt)
     -- Allocate a new temporary register to this variable
     local reg = new_temp_reg(ctx)
     ctx.local_scope[name] = reg
-    io.write('local `'..name..'` is in stack register '..reg..'\n')
+    io.write('local `'..name..'` is in register '..reg..'\n')
   end
 end
 
