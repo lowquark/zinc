@@ -32,12 +32,14 @@ end
 
 local keyword_set = {
   ['access'] = true,
-  ['module'] = true,
-  ['struct'] = true,
-  ['function'] = true,
-  ['return'] = true,
-  ['if'] = true,
+  ['const'] = true,
   ['else'] = true,
+  ['function'] = true,
+  ['if'] = true,
+  ['module'] = true,
+  ['opt'] = true,
+  ['return'] = true,
+  ['struct'] = true,
 }
 
 local function is_keyword(str)
@@ -175,18 +177,16 @@ local function read(L)
   end
 end
 
-local function push(L)
-  local st = { line = L.line, col = L.col, c = L.c, next = L.next, seek = L.file:seek() }
-  table.insert(L.states, st)
+local function state(L)
+  return { line = L.line, col = L.col, c = L.c, next = L.next, seek = L.file:seek() }
 end
 
-local function pop(L)
-  local st = table.remove(L.states)
-  L.line = st.line
-  L.col = st.col
-  L.c = st.c
-  L.next = st.next
-  L.file:seek('set', st.seek)
+local function reset(L, state)
+  L.line = state.line
+  L.col = state.col
+  L.c = state.c
+  L.next = state.next
+  L.file:seek('set', state.seek)
 end
 
 local function Lexer(file)
@@ -194,8 +194,8 @@ local function Lexer(file)
 
   setmetatable(L, { __index = {
     read = read,
-    push = push,
-    pop = pop,
+    state = state,
+    reset = reset,
   }})
 
   readc(L)

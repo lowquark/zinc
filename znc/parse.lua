@@ -11,7 +11,7 @@ local Lexer = require 'Lexer'
 
 --[[
 
-Full parser grammar, in LL(1) extended BNF:
+Full parser grammar, in extended BNF:
 
 <name-path-rest> := { ':' <name> }
 <name-path> := <name> <name-path-rest>
@@ -35,13 +35,16 @@ Full parser grammar, in LL(1) extended BNF:
 <else-body> := 'else' ( <if-body> [ <else-body> ] | <block> )
 <if-statement> := <if-body> [ <else-body> ]
 
-<statement-post-name-path> := <name> ';' | '(' [ <arguments> ] ')' ';'
-<statement-post-name> := '=' <expression> ';' | <name-path-rest> <statement-post-name-path>
+<type> := { 'const' | 'opt' } <name_path> [ '&' ]
+<lvalue> := <type> <name> | <name_path>
+<assignment> := <lvalue> { ',' <lvalue> } [ '=' <expression> { ',' <expression> } ] ';'
+<function-call> := <name-path> '(' [ <arguments> ] ')'
+
 <statement> := 'return' [ <expression> ] ';'
              | <if-statement>
              | <block>
-             | <name> <statement-post-name>
-             | <expression> ';'
+             | <function-call>
+             | <assignment>
 
 <block> := '{' { <statement> } '}'
 
@@ -123,6 +126,12 @@ local function parse_abort_expected(L, ...)
   io.write(debug.traceback())
   os.exit(3)
 end
+
+-- Forward declarations of certain functions
+local parse_expression
+local expect_expression
+local expect_statement
+local parse_if_statement
 
 -- Unless otherwise specified,
 --   * Functions of the form expect_xxxx throw an error if the next token is not valid to start rule
@@ -238,8 +247,6 @@ local function parse_struct_declaration(L)
   end
 end
 
-local parse_expression
-local expect_expression
 
 -- Tries to parse: [ <argument-list> ]
 -- Returns the AST object for an argument list
@@ -261,14 +268,14 @@ end
 -- Returns an empty list if no declarations could be read
 local function parse_argument_declarations(L)
   local list = {}
-  local name_path = parse_name_path(L)
-  if name_path then
+  local type_spec = parse_type_specifier(L)
+  if type_spec then
     local name = expect_name(L)
-    table.insert(list, { type_name_path = name_path, name = name })
+    table.insert(list, { type_specifier = type_spec, name = name })
     while parse_token(L, 'comma') do
-      local name_path = expect_name_path(L)
+      local type_spec = expect_type_specifier(L)
       local name = expect_name(L)
-      table.insert(list, { type_name_path = name_path, name = name })
+      table.insert(list, { type_specifier = type_spec, name = name })
     end
   end
   return list
@@ -369,7 +376,10 @@ end
 local function parse_expression_p3(L)
   -- Read first operator argument (may be the only one)
   local subexpr = parse_expression_p2(L)
-  while L.next.type == 'cmplt' or L.next.type == 'cmpgt' or L.next.type == 'cmpleq' or L.next.type == 'cmpgeq' do
+  while L.next.type == 'cmplt' or
+        L.next.type == 'cmpgt' or
+        L.next.type == 'cmpleq' or
+        L.next.type == 'cmpgeq' do
     -- Read operator
     local optype = L.next.type
     L:read()
@@ -449,16 +459,13 @@ parse_expression = parse_expression_p6
 
 -- Expects to parse the rule: <expression>
 -- Returns the AST object for an expression
-expect_expression = function(L)
+function expect_expression(L)
   local expr = parse_expression(L)
   if not expr then
     parse_abort_expected(L, 'expression')
   end
   return expr
 end
-
-local expect_statement
-local parse_if_statement
 
 -- Tries to parse the rule: <block>
 -- Returns the AST object for a block statement
@@ -510,7 +517,7 @@ end
 
 -- Tries to parse the rule: <if-statement>
 -- Returns the AST object for an if statement
-parse_if_statement = function(L)
+function parse_if_statement(L)
   local expr, if_stmt = parse_if_body(L)
   if expr then
     -- if statement parsed, try to read its else clause
@@ -519,9 +526,38 @@ parse_if_statement = function(L)
   end
 end
 
+-- Tries to parse the rule: <type>
+-- Returns the AST object for a type
+function parse_type_specifier(L)
+  local st = L:state()
+  while L.next.type == 'const' or L.next.type == 'opt' do
+    -- Just eat, none of this matters yet
+    L:read()
+  end
+  local name_path = parse_name_path(L)
+  if not name_path then
+    -- Not actually a type, boo
+    L:reset(st)
+    return
+  end
+  local ref = parse_token(L, 'binand')
+  return ast.type_specifier(name_path, ref)
+end
+
+-- Expects to parse the rule: <type>
+-- Returns the AST object for a type
+function expect_type_specifier(L)
+  local t = parse_type_specifier(L)
+  if t then
+    return t
+  else
+    parse_abort_expected(L, 'type specifier')
+  end
+end
+
 -- Expects to parse the rule: <statement>
 -- Returns the AST object for a statement
-expect_statement = function(L)
+function expect_statement(L)
   local stmt
   if parse_token(L, 'return') then
     -- Easiest statement ever

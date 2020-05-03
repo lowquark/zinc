@@ -12,6 +12,12 @@ function ast.name_path()
   return { }
 end
 
+function ast.type_specifier(name_path, ref)
+  assert(name_path)
+  assert(type(ref) == 'boolean')
+  return { type = 'type-specifier', name_path = name_path, ref = ref }
+end
+
 -- Expressions: (The list is long)
 function ast.expr_integer(value)
   assert(value)
@@ -220,7 +226,15 @@ end
 local dump_expr
 local dump_stmt
 
-dump_expr = function(expr, level)
+local function type_spec_str(type_spec)
+  local str = table.concat(type_spec.name_path, ':')
+  if type_spec.ref then
+    str = str..' &'
+  end
+  return str
+end
+
+function dump_expr(expr, level)
   local level = level or 0
   local indent = string.rep('  ', level)
   io.write(indent..string.upper(expr.type)..' ')
@@ -246,7 +260,7 @@ dump_expr = function(expr, level)
   end
 end
 
-dump_stmt = function(stmt, level)
+function dump_stmt(stmt, level)
   local level = level or 0
   local indent = string.rep('  ', level)
   if stmt.type == 'return' then
@@ -287,11 +301,11 @@ local function dump_module_decl(decl, level)
   if decl.type == 'function' then
     io.write(indent..'FUNCTION '..decl.name..' ( ')
     for i,arg in ipairs(decl.arguments) do
-      io.write(arg.name..':'..table.concat(arg.type_name_path,':')..' ')
+      io.write(type_spec_str(arg.type_specifier)..' '..arg.name..', ')
     end
     io.write(') -> ( ')
-    for i,arg in ipairs(decl.returns) do
-      io.write(arg.name..':'..table.concat(arg.type_name_path,':')..' ')
+    for i,ret in ipairs(decl.returns) do
+      io.write(type_spec_str(ret.type_specifier)..' '..ret.name..', ')
     end
     io.write(')\n')
     dump_stmt(decl.block, level + 1)
