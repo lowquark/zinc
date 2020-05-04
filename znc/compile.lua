@@ -119,6 +119,43 @@ function emit(ctx, ir_stmt)
   table.insert(ctx.subroutine.statements, ir_stmt)
 end
 
+-- Emits the appropriate instructions to call a function
+-- If return_regs is specified, stores the first n return values in the given registers
+function put_call(ctx, name_path, arglist, return_regs)
+  -- Find the function in question
+  local name = table.concat(name_path, '$')
+  local target_subr = find_call(ctx, name_path)
+  local target_arg_num = #target_subr.arguments
+  local target_ret_num = #target_subr.returns
+  -- Validate the function call
+  if target_arg_num ~= #arglist then
+    error('Wrong number of arguments for call to '..table.concat(name_path, ':')..'(...)')
+  end
+  if return_regs and #return_regs > target_ret_num then
+    error('Too many return registers for function call')
+  end
+  -- As far as the IR is concerned, argument space is return value space
+  local ir_arg_space = math.max(target_arg_num, target_ret_num)
+  -- Create an appropriate argument buffer
+  emit(ctx, ir.begincall(ir_arg_space))
+  -- Push arguments onto stack
+  for k,ast_expr in ipairs(arglist) do
+    local exp_reg = put_expression(ctx, ast_expr)
+    -- Emit assignment to this argument register
+    emit(ctx, ir.mov('a'..(k-1), exp_reg))
+  end
+  -- Actually emit call instruction
+  emit(ctx, ir.call(name))
+  -- Move return values into first n destination registers
+  if return_regs then
+    for k=1,#return_regs do
+      emit(ctx, ir.mov(return_regs[k], 'a'..(k-1)));
+    end
+  end
+  -- Free argument buffer
+  emit(ctx, ir.endcall())
+end
+
 -- Emits the appropriate instructions to evaluate the given AST statement
 -- The result will be placed in the register at the top of the temporary stack
 function put_expression(ctx, expr)
@@ -281,50 +318,10 @@ function pet.variable(ctx, expr)
 end
 
 function pet.call(ctx, expr)
-  return put_call(ctx, expr.name_path, expr.arguments, 1)
-end
-
--- Emits the appropriate instructions to call a function
--- If return_num is specified, stores the first n return values in n new temporary registers
-function put_call(ctx, name_path, arglist, return_num)
-  -- Find the function in question
-  local name = table.concat(name_path, '$')
-  local target_subr = find_call(ctx, name_path)
-  local target_arg_num = #target_subr.arguments
-  local target_ret_num = #target_subr.returns
-  -- Validate the function call
-  if target_arg_num ~= #arglist then
-    error('Wrong number of arguments for call to '..table.concat(name_path, ':')..'(...)')
-  end
-  if target_ret_num ~= return_num then
-    error('Wrong number of return values for call to '..table.concat(name_path, ':')..'(...)')
-  end
-  -- As far as the IR is concerned, argument space is return value space
-  local ir_arg_space = math.max(target_arg_num, target_ret_num)
-  -- Create an appropriate argument buffer
-  emit(ctx, ir.begincall(ir_arg_space))
-  -- Push arguments onto stack
-  local arg_index = 0
-  for k,ast_expr in ipairs(arglist) do
-    local exp_reg = put_expression(ctx, ast_expr)
-    -- Emit assignment to this argument register
-    local arg_index = k - 1
-    local arg_reg = 'a'..arg_index
-    arg_index = arg_index + 1
-    emit(ctx, ir.mov(arg_reg, exp_reg))
-  end
-  -- Actually emit call instruction
-  emit(ctx, ir.call(name))
-  -- Alloc as many temporaries as return values
-  local return_reg_tmp
-  for k=0,return_num-1 do
-    return_reg_tmp = new_temp_reg(ctx)
-    -- Place in temporary
-    emit(ctx, ir.mov(return_reg_tmp, 'a'..k));
-  end
-  -- Clear stack
-  emit(ctx, ir.endcall())
-  return return_reg_tmp
+  -- Functions only yield their first result to expressions
+  local return_reg = new_temp_reg(ctx)
+  put_call(ctx, expr.name_path, expr.arguments, { return_reg })
+  return return_reg
 end
 
 function put_statement(ctx, ast_stmt)
@@ -382,10 +379,7 @@ function pst.assignment(ctx, ast_stmt)
   -- Validate assignment configuration
   local num_ex = #ast_stmt.expressions
   local num_lv = #ast_stmt.lvalues
-  if num_lv ~= num_ex and num_ex > 0 then
-    error('Invalid assignment: cannot assign '..num_ex..' expressions to '..num_lv..' lvalues.')
-  end
-  -- Allocate/reference registers for lvalues
+  -- Allocate/find registers containing lvalues
   for i,ast_lvalue in ipairs(ast_stmt.lvalues) do
     if ast_lvalue.type == 'declaration' then
       local reg = new_local_variable(ctx, ast_lvalue.type_specifier, ast_lvalue.name)
@@ -405,16 +399,32 @@ function pst.assignment(ctx, ast_stmt)
       error('Unknown lvalue type `'..ast_lvalue..'`')
     end
   end
+  -- If expressions are given, evaluate and assign
   if num_ex > 0 then
-    -- Put corresponding expressions
-    for i,ast_expr in ipairs(ast_stmt.expressions) do
-      local src_reg = put_expression(ctx, ast_expr)
-      table.insert(src_regs, src_reg)
-    end
-    for i=1,num_ex do
-      local src_reg = src_regs[i]
-      local dst_reg = dst_regs[i]
-      emit(ctx, ir.mov(dst_reg, src_reg))
+    local first_expr = ast_stmt.expressions[1]
+    -- If the expression list is a single call, expand its return values to the given lvalues
+    if first_expr.type == 'call' and num_ex == 1 then
+      local func = find_call(ctx, first_expr.name_path)
+      if #func.returns < num_lv then
+        error('Cannot assign '..#func.returns..' return value(s) to '..num_lv..' lvalue(s).')
+      end
+      put_call(ctx, first_expr.name_path, first_expr.arguments, dst_regs)
+    else
+      if num_ex ~= num_lv then
+        error('Cannot assign '..num_ex..' expression(s) to '..num_lv..' lvalue(s).')
+      end
+      -- Evaluate expressions and assign to temporaries for great swapping/justice
+      for i,ast_expr in ipairs(ast_stmt.expressions) do
+        local src_reg = put_expression(ctx, ast_expr)
+        table.insert(src_regs, src_reg)
+      end
+      -- Move temporaries into lvalues
+      -- Lua does this in reverse for some reason. `a, a = 0, 1` yields a = 0
+      for i=1,num_lv do
+        local src_reg = src_regs[i]
+        local dst_reg = dst_regs[i]
+        emit(ctx, ir.mov(dst_reg, src_reg))
+      end
     end
   end
 end
@@ -433,7 +443,7 @@ end
 
 function pst.call(ctx, ast_stmt)
   -- Emit a call, without saving any return values
-  put_call(ctx, ast_stmt.name_path, ast_stmt.arguments, 0)
+  put_call(ctx, ast_stmt.name_path, ast_stmt.arguments)
 end
 
 local function compile_subroutine(ctx, ast_func)

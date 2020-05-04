@@ -30,7 +30,7 @@ Full parser grammar, in extended BNF:
 <expression-p6> := <expression-p5> { '||' <expression-p5> }
 <expression> := <expression-p6>
 
-<type-specifier> := [ 'const' ] <name_path> [ '&' ]
+<type-specifier> := [ 'const' ] <name-path> [ '&' ]
 
 <arguments> := <expression> { ',' <expression> }
 <argument-declarations> := <type-specifier> <name> { ',' <type-specifier> <name> }
@@ -45,7 +45,7 @@ Full parser grammar, in extended BNF:
 
 <function-call> := <name-path> '(' [ <arguments> ] ')'
 
-<lvalue> := <type-specifier> <name> | <name_path>
+<lvalue> := <type-specifier> <name> | <name-path>
 <assignment> := <lvalue> { ',' <lvalue> } [ '=' <expression> { ',' <expression> } ] ';'
 
 <statement> := <return-statement>

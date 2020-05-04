@@ -23,10 +23,22 @@ end
 -- Computes the maximum lifetime interval for the temporary registers used by the given subroutine
 -- Returns an array of register names and their intervals, in order of first start index
 local function max_lifetimes(subr)
+  local start_idx = { }
   local end_idx = { }
-  local defseen = { }
   local lifetimes = { }
   local n = #subr.statements
+  local regs_by_start = {}
+  -- Search forward to find first definition of each register
+  for k=1,n do
+    local ir_stmt = subr.statements[k]
+    local reg_z = ir_stmt.register_z
+    if reg_z and not start_idx[reg_z] then
+      if reg_z:sub(1,1) == 'r' then
+        start_idx[reg_z] = k
+        regs_by_start[#regs_by_start+1] = reg_z
+      end
+    end
+  end
   -- Search backward to find last reference to each register
   for k=n,1,-1 do
     local ir_stmt = subr.statements[k]
@@ -43,23 +55,24 @@ local function max_lifetimes(subr)
       end
     end
   end
-  -- Search forward to find first definition of each register, and when found, attempt to create an
-  -- interval with an associated end index
-  for k=1,n do
-    local ir_stmt = subr.statements[k]
-    local reg_z = ir_stmt.register_z
-    if reg_z and not defseen[reg_z] then
-      -- Mark visited
-      defseen[reg_z] = true
-      if reg_z:sub(1,1) == 'r' then
-        -- First definition is here, find last reference
-        local k_begin = k
-        local k_end = end_idx[reg_z]
-        if k_end and k_end > k_begin then
-          -- We also happen to be iterating in order of start index, so append it to the list
-          table.insert(lifetimes, { reg = reg_z, k_begin = k_begin, k_end = k_end })
-        end
-      end
+  -- Fill in missing start/ends, for sake of correctness
+  for reg,k in ipairs(start_idx) do
+    if not end_idx[reg] then
+      end_idx[reg] = n
+    end
+  end
+  for reg,k in ipairs(end_idx) do
+    if not start_idx[reg] then
+      start_idx[reg] = 1
+    end
+  end
+  -- Create list of (valid) intervals for each register
+  for i,reg in ipairs(regs_by_start) do
+    local k_begin = start_idx[reg]
+    local k_end = end_idx[reg]
+    if k_end > k_begin then
+      -- We also happen to be iterating in order of start index, so append it to the list
+      table.insert(lifetimes, { reg = reg, k_begin = k_begin, k_end = k_end })
     end
   end
   return lifetimes
