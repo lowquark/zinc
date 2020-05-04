@@ -28,6 +28,7 @@ local otrt = {
   '%r11',
 }
 
+-- (r)egister (b)yte (f)orm (t)able
 local rbft = {
   ['%rbx'] = '%bl',
   ['%rdx'] = '%dl',
@@ -334,8 +335,13 @@ end
 function est.begincall(ctx, ir_stmt)
   local call_data = { }
   call_data.args_size = ir_stmt.size
-  -- Clobbered argument registers should be saved and recorded here
-  -- ...
+  -- TODO: Use liveness information
+  -- TODO: Provide liveness information to this stage
+  -- TODO: Calculate liveness information
+  -- For now, save all possibly clobbered registers
+  for i=1,#otrt do
+    emit(ctx, 'push '..otrt[i])
+  end
   -- Allocate stack argument space, save beginning
   call_data.args_index = ctx.stack_index
   emit_stack_alloc(ctx, call_data.args_size)
@@ -345,10 +351,12 @@ end
 function est.endcall(ctx, ir_stmt)
   local call_data = table.remove(ctx.call_data_stack)
   if not call_data then error('No matching begincall instruction for endcall instruction') end
-  -- Clobbered argument registers should be restored here
-  -- ...
   -- Deallocate stack argument space
   emit_stack_dealloc(ctx, call_data.args_size)
+  -- For now, restore all possibly clobbered registers
+  for i=#otrt,1,-1 do
+    emit(ctx, 'pop '..otrt[i])
+  end
 end
 function est.call(ctx, ir_stmt)
   emit(ctx, 'call '..ir_stmt.name)

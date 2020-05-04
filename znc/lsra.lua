@@ -56,14 +56,15 @@ local function max_lifetimes(subr)
     end
   end
   -- Fill in missing start/ends, for sake of correctness
-  for reg,k in ipairs(start_idx) do
+  for reg,k in pairs(start_idx) do
     if not end_idx[reg] then
       end_idx[reg] = n
     end
   end
-  for reg,k in ipairs(end_idx) do
+  for reg,k in pairs(end_idx) do
     if not start_idx[reg] then
       start_idx[reg] = 1
+      table.insert(regs_by_start, 1, reg)
     end
   end
   -- Create list of (valid) intervals for each register
