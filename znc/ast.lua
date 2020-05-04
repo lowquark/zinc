@@ -165,9 +165,9 @@ function ast.stmt_if(expr, if_stmt, else_stmt)
   assert(if_stmt)
   return { type = 'if', expression = expr, if_statement = if_stmt, else_statement = else_stmt }
 end
-function ast.stmt_return(expr)
-  assert(expr)
-  return { type = 'return', expression = expr }
+function ast.stmt_return(exprs)
+  assert(exprs)
+  return { type = 'return', expressions = exprs }
 end
 function ast.stmt_assign(name, expr)
   assert(name)
@@ -302,8 +302,8 @@ function dump_stmt(stmt, level)
   local indent2 = string.rep('  ', level+1)
   if stmt.type == 'return' then
     io.write(indent..'RETURN\n')
-    if stmt.expression then
-      dump_expr(stmt.expression, level+1)
+    for i,ret_expr in ipairs(stmt.expressions) do
+      dump_expr(ret_expr, level+1)
     end
   elseif stmt.type == 'assignment' then
     io.write(indent..'ASSIGNMENT\n')

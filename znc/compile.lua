@@ -109,9 +109,9 @@ local put_call
 local put_expression
 local put_statement
 
--- (e)mit (e)xpression (t)able
+-- (p)ut (e)xpression (t)able
 local pet = { }
--- (e)mit (s)tatement (t)able
+-- (p)ut (s)tatement (t)able
 local pst = {}
 
 -- Appends an instruction onto the subroutine currently being generated
@@ -359,11 +359,20 @@ pst['if'] = function(ctx, ast_stmt)
 end
 
 pst['return'] = function(ctx, ast_stmt)
-  local expr = ast_stmt.expression
-  if expr then
-    -- Put return expression
-    local reg_x = put_expression(ctx, expr)
-    emit(ctx, ir.mov('i0', reg_x))
+  local expr_regs = {}
+  if #ctx.ast_func.returns ~= #ast_stmt.expressions then
+    local values = 'values'
+    if #ctx.ast_func.returns == 1 then values = 'value' end
+    local were = 'were'
+    if #ast_stmt.expressions == 1 then were = 'was' end
+    error('Function returns '..#ctx.ast_func.returns..
+          ' '..values..', but only '..#ast_stmt.expressions..' '..were..' provided.')
+  end
+  for i,expr in ipairs(ast_stmt.expressions) do
+    expr_regs[#expr_regs+1] = put_expression(ctx, expr)
+  end
+  for i,expr in ipairs(ast_stmt.expressions) do
+    emit(ctx, ir.mov('i'..(i-1), expr_regs[i]))
   end
   emit(ctx, ir.ret())
 end
@@ -406,12 +415,22 @@ function pst.assignment(ctx, ast_stmt)
     if first_expr.type == 'call' and num_ex == 1 then
       local func = find_call(ctx, first_expr.name_path)
       if #func.returns < num_lv then
-        error('Cannot assign '..#func.returns..' return value(s) to '..num_lv..' lvalue(s).')
+        local return_values = 'return values'
+        if #func.returns == 1 then return_values = 'return value' end
+        local lvalues = 'lvalues'
+        if num_lv == 1 then lvalues = 'lvalue' end
+        error('Cannot assign '..#func.returns..' '..return_values..
+              ' to '..num_lv..' '..lvalues..'.')
       end
       put_call(ctx, first_expr.name_path, first_expr.arguments, dst_regs)
     else
       if num_ex ~= num_lv then
-        error('Cannot assign '..num_ex..' expression(s) to '..num_lv..' lvalue(s).')
+        local expressions = 'expressions'
+        if num_ex == 1 then expressions = 'expression' end
+        local lvalues = 'lvalues'
+        if num_lv == 1 then lvalues = 'lvalue' end
+        error('Cannot assign '..num_ex..' '..expressions..
+              ' to '..num_lv..' '..lvalues..'.')
       end
       -- Evaluate expressions and assign to temporaries for great swapping/justice
       for i,ast_expr in ipairs(ast_stmt.expressions) do
@@ -461,6 +480,7 @@ local function compile_subroutine(ctx, ast_func)
   end
   -- Initialize subroutine context
   ctx.subroutine = subr
+  ctx.ast_func = ast_func
   -- Counter / high water mark for the temp stack
   ctx.temp_index = 0
   ctx.temp_index_max = 0

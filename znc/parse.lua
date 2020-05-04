@@ -35,7 +35,7 @@ Full parser grammar, in extended BNF:
 <arguments> := <expression> { ',' <expression> }
 <argument-declarations> := <type-specifier> <name> { ',' <type-specifier> <name> }
 
-<return-statement> := 'return' [ <expression> ] ';'
+<return-statement> := 'return' [ <arguments> ] ';'
 
 <block> := '{' { <statement> } '}'
 
@@ -638,8 +638,8 @@ end
 -- Returns the AST object for a return statement
 local function parse_return_statement(L)
   if parse_token(L, 'return') then
-    -- Easiest statement ever
-    local stmt = ast.stmt_return(parse_expression(L))
+    local args = parse_argument_list(L)
+    local stmt = ast.stmt_return(args)
     expect_token(L, 'semicolon')
     return stmt
   end
