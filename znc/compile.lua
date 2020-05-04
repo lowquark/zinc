@@ -37,6 +37,22 @@ local pprint = require 'pprint'
 ----------------------------------------------------------------------------------------------------
 -- Utilities
 
+-- Places correctly pluralized units on the given number and returns their combined string
+local function plz(n, singular, plural)
+  if n == 1 then
+    return tostring(n)..' '..singular
+  else
+    return tostring(n)..' '..plural
+  end
+end
+
+-- Reports a compilation error and aborts
+local function report_error(str)
+  io.write('Compilation error on line ?, col ?: '..str..'\n')
+  io.write(debug.traceback())
+  os.exit(4)
+end
+
 -- Duplicates the given scope table
 local function dupscope(scope)
   local new_scope = { }
@@ -46,7 +62,8 @@ local function dupscope(scope)
   return new_scope
 end
 
--- Temporary registers are allocated SSA via simple counter, which requires post processing
+-- Temporary registers are allocated SSA-style via simple counter
+-- This requires post processing!
 local function new_temp_reg(ctx)
   local idx = ctx.temp_index
   ctx.temp_index = ctx.temp_index + 1
@@ -72,7 +89,7 @@ local function find_variable(ctx, name)
   if reg then
     return reg
   else
-    error('`'..name..'` was not found in this scope.')
+    report_error('`'..name..'` was not found in this scope.')
   end
 end
 
@@ -83,7 +100,7 @@ local function find_call(ctx, name_path)
   local name = table.concat(name_path, '$')
   local subr = ctx.subroutines[name]
   if not subr then
-    error('Function '..table.concat(name_path, ':')..' is undefined here.')
+    report_error('Function '..table.concat(name_path, ':')..' is undefined here.')
   end
   return subr
 end
@@ -91,7 +108,7 @@ end
 local function new_local_variable(ctx, type_spec, name)
   -- TODO: Acknowledge type specifier
   if ctx.local_scope[name] then
-    error('`'..name..'` was already declared in this scope.')
+    report_error('`'..name..'` was already declared in this scope.')
   else
     -- Allocate a new temporary register to this variable
     local reg = new_temp_reg(ctx)
@@ -129,9 +146,10 @@ function put_call(ctx, name_path, arglist, return_regs)
   local target_ret_num = #target_subr.returns
   -- Validate the function call
   if target_arg_num ~= #arglist then
-    error('Wrong number of arguments for call to '..table.concat(name_path, ':')..'(...)')
+    report_error('Wrong number of arguments for call to '..table.concat(name_path, ':')..'(...)')
   end
   if return_regs and #return_regs > target_ret_num then
+    -- This is actually an internal error
     error('Too many return registers for function call')
   end
   -- As far as the IR is concerned, argument space is return value space
@@ -318,7 +336,7 @@ function pet.variable(ctx, expr)
 end
 
 function pet.call(ctx, expr)
-  -- Functions only yield their first result to expressions
+  -- Function calls only yield their first return value to expressions
   local return_reg = new_temp_reg(ctx)
   put_call(ctx, expr.name_path, expr.arguments, { return_reg })
   return return_reg
@@ -329,7 +347,7 @@ function put_statement(ctx, ast_stmt)
   if h then
     h(ctx, ast_stmt)
   else
-    error('Unknown AST statement type `'..ast_stmt.type..'`')
+    report_error('Unknown AST statement type `'..ast_stmt.type..'`')
   end
 end
 
@@ -361,12 +379,9 @@ end
 pst['return'] = function(ctx, ast_stmt)
   local expr_regs = {}
   if #ctx.ast_func.returns ~= #ast_stmt.expressions then
-    local values = 'values'
-    if #ctx.ast_func.returns == 1 then values = 'value' end
-    local were = 'were'
-    if #ast_stmt.expressions == 1 then were = 'was' end
-    error('Function returns '..#ctx.ast_func.returns..
-          ' '..values..', but only '..#ast_stmt.expressions..' '..were..' provided.')
+    report_error('Function returns '..plz(#ctx.ast_func.returns, 'value', 'values')..
+                 ', but '..plz(#ast_stmt.expressions, 'was', 'were')..
+                 ' provided')
   end
   for i,expr in ipairs(ast_stmt.expressions) do
     expr_regs[#expr_regs+1] = put_expression(ctx, expr)
@@ -375,11 +390,6 @@ pst['return'] = function(ctx, ast_stmt)
     emit(ctx, ir.mov('i'..(i-1), expr_regs[i]))
   end
   emit(ctx, ir.ret())
-end
-
-function pst.assign(ctx, ast_stmt)
-  local reg = put_expression(ctx, ast_stmt.expression)
-  emit(ctx, ir.mov(find_variable(ctx, ast_stmt.name), reg))
 end
 
 function pst.assignment(ctx, ast_stmt)
@@ -396,16 +406,16 @@ function pst.assignment(ctx, ast_stmt)
     elseif ast_lvalue.type == 'reference' then
       pprint(ast_lvalue)
       if #ast_lvalue.name_path ~= 1 then
-        error('Fully-scoped referential lvalues not supported')
+        report_error('Fully-scoped referential lvalues not supported')
       end
       if #ast_lvalue.index_exprs ~= 0 then
-        error('Referential lvalues with index expressions not supported')
+        report_error('Referential lvalues with index expressions not supported')
       end
       local name = ast_lvalue.name_path[1]
       local reg = find_variable(ctx, name)
       table.insert(dst_regs, reg)
     else
-      error('Unknown lvalue type `'..ast_lvalue..'`')
+      report_error('Unknown lvalue type `'..ast_lvalue..'`')
     end
   end
   -- If expressions are given, evaluate and assign
@@ -415,22 +425,14 @@ function pst.assignment(ctx, ast_stmt)
     if first_expr.type == 'call' and num_ex == 1 then
       local func = find_call(ctx, first_expr.name_path)
       if #func.returns < num_lv then
-        local return_values = 'return values'
-        if #func.returns == 1 then return_values = 'return value' end
-        local lvalues = 'lvalues'
-        if num_lv == 1 then lvalues = 'lvalue' end
-        error('Cannot assign '..#func.returns..' '..return_values..
-              ' to '..num_lv..' '..lvalues..'.')
+        report_error('Cannot assign '..plz(#func.returns, 'return value', 'return values')..
+                     ' to '..plz(num_lv, 'lvalue', 'lvalues')..'.')
       end
       put_call(ctx, first_expr.name_path, first_expr.arguments, dst_regs)
     else
       if num_ex ~= num_lv then
-        local expressions = 'expressions'
-        if num_ex == 1 then expressions = 'expression' end
-        local lvalues = 'lvalues'
-        if num_lv == 1 then lvalues = 'lvalue' end
-        error('Cannot assign '..num_ex..' '..expressions..
-              ' to '..num_lv..' '..lvalues..'.')
+        report_error('Cannot assign '..plz(num_ex, 'expression', 'expressions')..
+                     ' to '..plz(num_lv, 'lvalue', 'lvalues')..'.')
       end
       -- Evaluate expressions and assign to temporaries for great swapping/justice
       for i,ast_expr in ipairs(ast_stmt.expressions) do
