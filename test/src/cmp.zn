@@ -1,32 +1,138 @@
 
 module my_module {
   function main() -> (int64 ret) {
-    int64 a;
-    int64 b;
+    int64 a = 10;
+    int64 b = 10;
 
-    a = 10;
-    b = 0;
+    if(10 == 10) {
+    }
+    if(10 != 10) {
+      return 1;
+    }
+    if(10 < 10) {
+      return 2;
+    }
+    if(10 > 10) {
+      return 3;
+    }
+    if(10 <= 10) {
+    }
+    if(10 >= 10) {
+    }
+
+    if(10 == 20) {
+      return 4;
+    }
+    if(10 != 20) {
+    }
+    if(10 < 20) {
+    }
+    if(10 > 20) {
+      return 5;
+    }
+    if(10 <= 20) {
+    }
+    if(10 >= 20) {
+      return 6;
+    }
 
     if(a == 10) {
-      b = b + 1;
     }
     if(a != 10) {
-      b = b + 2;
+      return 7;
     }
     if(a < 10) {
-      b = b + 4;
+      return 8;
     }
     if(a > 10) {
-      b = b + 8;
+      return 9;
     }
     if(a <= 10) {
-      b = b + 16;
     }
     if(a >= 10) {
-      b = b + 32;
     }
 
-    return b;
+    if(a == 20) {
+      return 10;
+    }
+    if(a != 20) {
+    }
+    if(a < 20) {
+    }
+    if(a > 20) {
+      return 11;
+    }
+    if(a <= 20) {
+    }
+    if(a >= 20) {
+      return 12;
+    }
+
+    if(10 == a) {
+    }
+    if(10 != a) {
+      return 13;
+    }
+    if(10 < a) {
+      return 14;
+    }
+    if(10 > a) {
+      return 15;
+    }
+    if(10 <= a) {
+    }
+    if(10 >= a) {
+    }
+
+    if(20 == a) {
+      return 16;
+    }
+    if(20 != a) {
+    }
+    if(20 < a) {
+      return 17;
+    }
+    if(20 > a) {
+    }
+    if(20 <= a) {
+      return 18;
+    }
+    if(20 >= a) {
+    }
+
+    if(a == a) {
+    }
+    if(a != a) {
+      return 19;
+    }
+    if(a < a) {
+      return 20;
+    }
+    if(a > a) {
+      return 21;
+    }
+    if(a <= a) {
+    }
+    if(a >= a) {
+    }
+
+    if(a == b) {
+    }
+    if(a != b) {
+      return 22;
+    }
+    if(a < b) {
+      return 23;
+    }
+    if(a > b) {
+      return 24;
+    }
+    if(a <= b) {
+    }
+    if(a >= b) {
+    }
+
+    return 0;
   }
 }
 

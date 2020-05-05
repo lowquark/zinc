@@ -20,7 +20,7 @@ function test() {
 
   if [ $RESULT -ne 0 ]; then
     printf "%-30s $FAILED\n" "COMPILER RETURNED ERROR $RESULT"
-    if [ $BENCH == "bench" ]; then
+    if [ "$BENCH" == "bench" ]; then
       echo "copying to bench"
       cp $1 bench.zn
     fi
@@ -36,7 +36,7 @@ function test() {
 
   if [ $RESULT -ne 0 ]; then
     printf "%-30s $FAILED\n" "ASSEMBLER RETURNED ERROR $RESULT"
-    if [ $BENCH == "bench" ]; then
+    if [ "$BENCH" == "bench" ]; then
       echo "copying to bench"
       cp $1 bench.zn
     fi
@@ -55,7 +55,7 @@ function test() {
     printf "%-30s $PASSED\n" "$1 -> $RESULT"
   else
     printf "%-30s $FAILED EXPECTED $2\n" "$1 -> $RESULT"
-    if [ $BENCH == "bench" ]; then
+    if [ "$BENCH" == "bench" ]; then
       echo "copying to bench"
       cp $1 bench.zn
     fi
@@ -68,10 +68,11 @@ function test() {
 test 'src/basic-add.zn' 6
 test 'src/basic-swap-0.zn' 0
 test 'src/basic-swap-1.zn' 1
-test 'src/cmp.zn' 49
+test 'src/cmp.zn' 0
 test 'src/if.zn' 7
 test 'src/multiple-return.zn' 25
 test 'src/structs.zn' 0
 
 rm -f a.out
+rm -f asm.s
 

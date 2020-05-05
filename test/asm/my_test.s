@@ -25,13 +25,7 @@ main:
 	movq	%rsp, %rbp
 	subq	$16, %rsp
 
-	movl	%edi, -4(%rbp)
-	movq	%rsi, -16(%rbp)
-	movl	$47, %esi
-	movl	$5, %edi
-	call	simple$wew
-	movq	%rax, global(%rip)
-	movl	$0, %eax
+  cmpq -8(%rsp), -4(%rsp)
 
 	leave
   ret

@@ -6,6 +6,8 @@
 local ir = require 'ir'
 local lsra = require 'lsra'
 
+-- TODO: Large immediate values
+
 local function list_contains(t, v)
   for i=1,#t do
     if t[i] == v then return true end
@@ -45,18 +47,33 @@ local rbft = {
   ['%r11'] = '%r11b',
 }
 
--- (i)nverse (s)et (c)omparison (i)nstruction (t)able
-local iscit = {
-  ['sete'] = 'setne',
-  ['setne'] = 'sete',
-  ['setl'] = 'setge',
-  ['setge'] = 'setl',
-  ['setg'] = 'setle',
-  ['setle'] = 'setg',
+-- (r)everse (s)et (i)nstruction (i)nequality (t)able
+local rsiit = {
+  ['sete'] = 'sete',
+  ['setne'] = 'setne',
+  ['setl'] = 'setg',
+  ['setg'] = 'setl',
+  ['setle'] = 'setge',
+  ['setge'] = 'setle',
+  -- Here lieth a mighty bug indeed
+  --['setl'] = 'setge',
+  --['setge'] = 'setl',
+  --['setg'] = 'setle',
+  --['setle'] = 'setg',
+}
+
+-- (r)everse (j)ump (i)nstruction (i)nequality (t)able
+local rjiit = {
+  ['je'] = 'je',
+  ['jne'] = 'jne',
+  ['jl'] = 'jg',
+  ['jg'] = 'jl',
+  ['jle'] = 'jge',
+  ['jge'] = 'jle',
 }
 
 -- (e)mit (s)tatement (t)able
-local est = {}
+local emit_stmt = {}
 
 ----------------------------------------------------------------------------------------------------
 -- Utilities
@@ -173,19 +190,19 @@ local function emit_push(ctx, op_x, type_x)
   ctx.stack_index = ctx.stack_index + 1
 end
 
-local function emit_pop(ctx, op_x, type_x)
-  emit(ctx, 'pop '..op_x)
+local function emit_pop(ctx, op_z, type_z)
+  assert(type_z ~= 'literal', 'Invalid instruction')
+  emit(ctx, 'pop '..op_z)
   ctx.stack_index = ctx.stack_index - 1
 end
 
 local function emit_mov(ctx, op_x, type_x, op_z, type_z)
-  -- Destination can't be a literal, that doesn't make any damn sense
-  if type_z == 'literal' then error('Invalid instruction') end
+  assert(type_z ~= 'literal', 'Invalid instruction')
   -- Optimize out useless moves
   if op_x == op_z then return end
   -- Move directly if possible
   if type_x == 'register' or type_z == 'register' then
-    -- If either is a register, only one memory reference will be possible
+    -- If either is a register, only one memory reference will be possible here
     emit(ctx, 'mov  '..op_x..', '..op_z)
   else
     -- Into the accumulator it goes
@@ -194,12 +211,57 @@ local function emit_mov(ctx, op_x, type_x, op_z, type_z)
   end
 end
 
-local function emit_binary_arith_op(ctx, instr, ir_stmt)
+local function emit_cmp(ctx, op_x, type_x, op_y, type_y, set_instr)
+  -- TODO: This may be pretty common among instructions. Fix them all!
+  -- Operand type configurations for cmp:
+  --  register  register  ok
+  --  register  literal   not ok - can swap
+  --  register  memory    ok
+  --  literal   register  ok
+  --  literal   literal   not ok - can't swap
+  --  literal   memory    ok
+  --  memory    register  ok
+  --  memory    literal   not ok - can swap
+  --  memory    memory    not ok - can't swap
+  -- Emit comparison instruction
+  if type_x == 'literal' then
+    if type_y == 'literal' then
+      -- Into the accumulator it goes
+      emit(ctx, 'movq '..op_x..', %rax')
+      emit(ctx, 'cmpq '..op_y..', %rax')
+    else
+      -- Emit swapped comparison
+      emit(ctx, 'cmpq '..op_x..', '..op_y)
+      return 'swap'
+    end
+  elseif type_x == 'memory' and type_y == 'memory' then
+    -- Into the accumulator it goes
+    emit(ctx, 'movq '..op_x..', %rax')
+    emit(ctx, 'cmpq '..op_y..', %rax')
+  else
+    -- Emit standard comparison
+    emit(ctx, 'cmpq '..op_y..', '..op_x)
+  end
+end
+
+local function emit_set(ctx, op_z, type_z, set_instr)
+  assert(type_z ~= 'literal', 'Invalid instruction')
+  -- Write destination
+  if type_z == 'register' then
+    emit(ctx, 'movq $0, '..op_z)
+    emit(ctx, set_instr..' '..reg_byte_form(op_z, type_z))
+  else
+    emit(ctx, 'movq $0, %rax')
+    emit(ctx, set_instr..' %al')
+    emit(ctx, 'movq %rax, '..op_z)
+  end
+end
+
+local function emit_stmt_binop(ctx, ir_stmt, instr)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_y, type_y = operand(ctx, ir_stmt.register_y)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
-  -- Destination can't be a literal, that doesn't make any damn sense
-  if type_z == 'literal' then error('Invalid instruction') end
+  assert(type_z ~= 'literal', 'Invalid instruction')
   if type_z == 'register' then
     -- op_z is a register, so only a single memory reference will be possible here
     if op_x ~= op_z then
@@ -214,62 +276,40 @@ local function emit_binary_arith_op(ctx, instr, ir_stmt)
   end
 end
 
-local function emit_comparison(ctx, set_instr, ir_stmt)
+local function emit_stmt_comparison_set(ctx, ir_stmt, set_instr)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_y, type_y = operand(ctx, ir_stmt.register_y)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
-  -- Destination can't be a literal, that doesn't make any damn sense
-  if type_z == 'literal' then error('Invalid instruction') end
-
-  if not iscit[set_instr] then
-    error('Invalid set comparison instruction `'..set_instr..'`')
+  -- If this is an inequality, reverse set instruction if cmp must be swapped
+  if emit_cmp(ctx, op_x, type_x, op_y, type_y) == 'swap' then
+    set_instr = rsiit[set_instr]
   end
-
-  if type_y == 'literal' then
-    -- cmp requires its second argument not be a literal, so swap everything
-    op_x, op_y = op_y, op_x
-    type_x, type_y = type_y, type_x
-    io.write(set_instr..' -> '..iscit[set_instr]..'\n')
-    --set_instr = iscit[set_instr]
-  end
-
-  if type_z == 'register' then
-    -- op_z is a register, so only a single memory reference will be possible here
-    if op_x ~= op_z then
-      emit(ctx, 'mov  '..op_x..', '..op_z)
-    end
-    emit(ctx, 'cmp  '..op_z..', '..op_y)
-    emit(ctx, 'mov  $0, '..op_z)
-    emit(ctx, set_instr..' '..reg_byte_form(op_z, type_z))
-  else
-    -- Into the accumulator it goes
-    emit(ctx, 'mov  '..op_x..', %rax')
-    emit(ctx, 'cmp  %rax, '..op_y)
-    emit(ctx, 'mov  $0, %rax')
-    emit(ctx, set_instr..' %al')
-    emit(ctx, 'mov  %rax, '..op_z)
-  end
+  emit_set(ctx, op_z, type_z, set_instr)
 end
 
-local function emit_jump_comparison(ctx, jump_instr, ir_stmt)
+local function emit_stmt_comparison_jump(ctx, ir_stmt, jump_instr)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_y, type_y = operand(ctx, ir_stmt.register_y)
-  -- Destination can't be a literal, that doesn't make any damn sense
-  if type_x == 'literal' and type_y == 'literal' then error('Invalid instruction') end
-  if type_x == 'register' or type_z == 'register' then
-    -- Either is a register, so only a single memory reference will be possible here
-    emit(ctx, 'cmp  '..op_x..', '..op_y)
-  else
-    -- Into the accumulator it goes
-    emit(ctx, 'mov  '..op_x..', %rax')
-    emit(ctx, 'cmp  %rax, '..op_y)
+  -- If this is an inequality, reverse jump instruction if cmp must be swapped
+  if emit_cmp(ctx, op_x, type_x, op_y, type_y) == 'swap' then
+    jump_instr = rjiit[jump_instr]
+  end
+  -- Jump based on condition
+  emit(ctx, jump_instr..' '..convert_label(ctx, ir_stmt.label_name))
+end
+
+local function emit_stmt_comparison_jump_z(ctx, ir_stmt, jump_instr)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  -- If this is an inequality, reverse jump instruction if cmp must be swapped
+  if emit_cmp(ctx, op_x, type_x, '$0', 'literal') == 'swap' then
+    jump_instr = rjiit[jump_instr]
   end
   -- Jump based on condition
   emit(ctx, jump_instr..' '..convert_label(ctx, ir_stmt.label_name))
 end
 
 function emit_statement(ctx, ir_stmt)
-  local h = est[ir_stmt.type]
+  local h = emit_stmt[ir_stmt.type]
   if h then
     h(ctx, ir_stmt)
   else
@@ -277,53 +317,55 @@ function emit_statement(ctx, ir_stmt)
   end
 end
 
-function est.mov(ctx, ir_stmt)
+function emit_stmt.mov(ctx, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   emit_mov(ctx, op_x, type_x, op_z, type_z)
 end
 
-function est.neg(ctx, ir_stmt)
+function emit_stmt.neg(ctx, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   emit_mov(ctx, op_x, type_x, op_z, type_z)
+  assert(type_z ~= 'literal', 'Invalid instruction')
   emit(ctx, 'negq '..op_z)
 end
 
-function est.bnot(ctx, ir_stmt)
+function emit_stmt.bnot(ctx, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   emit_mov(ctx, op_x, type_x, op_z, type_z)
+  assert(type_z ~= 'literal', 'Invalid instruction')
   emit(ctx, 'notq '..op_z)
 end
 
-function est.lnot(ctx, ir_stmt)
+function emit_stmt.lnot(ctx, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   emit_mov(ctx, op_x, type_x, op_z, type_z)
+  assert(type_z ~= 'literal', 'Invalid instruction')
   emit(ctx, 'cmp  $0, '..op_z)
   emit(ctx, 'mov  $0, '..op_z)
   emit(ctx, 'sete '..reg_byte_form(op_z, type_z))
 end
 
-function est.add(ctx, ir_stmt)
-  emit_binary_arith_op(ctx, 'addq', ir_stmt)
+function emit_stmt.add(ctx, ir_stmt)
+  emit_stmt_binop(ctx, ir_stmt, 'addq')
 end
 
-function est.sub(ctx, ir_stmt)
-  emit_binary_arith_op(ctx, 'subq', ir_stmt)
+function emit_stmt.sub(ctx, ir_stmt)
+  emit_stmt_binop(ctx, ir_stmt, 'subq')
 end
 
-function est.mul(ctx, ir_stmt)
-  emit_binary_arith_op(ctx, 'imul', ir_stmt)
+function emit_stmt.mul(ctx, ir_stmt)
+  emit_stmt_binop(ctx, ir_stmt, 'imul')
 end
 
-function est.div(ctx, ir_stmt)
-  -- Though, it's pretty marginal compared to how many cycles integer division itself takes.
+function emit_stmt.div(ctx, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_y, type_y = operand(ctx, ir_stmt.register_y)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
-  if type_z == 'literal' then error('Invalid instruction') end
+  assert(type_z ~= 'literal', 'Invalid instruction')
   -- Backup %rdx if applicable
   if op_z ~= '%rdx' then
     emit(ctx, 'mov  %rdx, %rcx')
@@ -343,31 +385,31 @@ function est.div(ctx, ir_stmt)
   end
 end
 
-function est.eq(ctx, ir_stmt)
-  emit_comparison(ctx, 'sete', ir_stmt)
+function emit_stmt.eq(ctx, ir_stmt)
+  emit_stmt_comparison_set(ctx, ir_stmt, 'sete')
 end
 
-function est.neq(ctx, ir_stmt)
-  emit_comparison(ctx, 'setne', ir_stmt)
+function emit_stmt.neq(ctx, ir_stmt)
+  emit_stmt_comparison_set(ctx, ir_stmt, 'setne')
 end
 
-function est.lt(ctx, ir_stmt)
-  emit_comparison(ctx, 'setl', ir_stmt)
+function emit_stmt.lt(ctx, ir_stmt)
+  emit_stmt_comparison_set(ctx, ir_stmt, 'setl')
 end
 
-function est.gt(ctx, ir_stmt)
-  emit_comparison(ctx, 'setg', ir_stmt)
+function emit_stmt.gt(ctx, ir_stmt)
+  emit_stmt_comparison_set(ctx, ir_stmt, 'setg')
 end
 
-function est.leq(ctx, ir_stmt)
-  emit_comparison(ctx, 'setle', ir_stmt)
+function emit_stmt.leq(ctx, ir_stmt)
+  emit_stmt_comparison_set(ctx, ir_stmt, 'setle')
 end
 
-function est.geq(ctx, ir_stmt)
-  emit_comparison(ctx, 'setge', ir_stmt)
+function emit_stmt.geq(ctx, ir_stmt)
+  emit_stmt_comparison_set(ctx, ir_stmt, 'setge')
 end
 
-function est.call(ctx, ir_stmt)
+function emit_stmt.call(ctx, ir_stmt)
   local return_ops = { }
   local return_types = { }
   local argument_ops = { }
@@ -412,68 +454,52 @@ function est.call(ctx, ir_stmt)
   emit_stack_dealloc(ctx, input_size)
   -- Restore all previously pushed registers
   for i=#saved_regs,1,-1 do
-    emit(ctx, 'pop  '..saved_regs[i])
-    ctx.stack_index = ctx.stack_index - 1
+    emit_pop(ctx, saved_regs[i])
   end
 end
 
-function est.ret(ctx, ir_stmt)
-  -- Any return values are assumed to have been already set
+function emit_stmt.ret(ctx, ir_stmt)
   emit_epilogue(ctx)
 end
 
-function est.label(ctx, ir_stmt)
+function emit_stmt.label(ctx, ir_stmt)
   emit_label(ctx, convert_label(ctx, ir_stmt.name))
 end
 
-function est.jmp(ctx, ir_stmt)
+function emit_stmt.jmp(ctx, ir_stmt)
   emit(ctx, 'jmp '..convert_label(ctx, ir_stmt.label_name))
 end
 
-function est.jz(ctx, ir_stmt)
-  local op_x, type_x = operand(ctx, ir_stmt.register_x)
-  if type_x == 'literal' then
-    emit(ctx, 'mov  '..op_x..', %rax')
-    emit(ctx, 'cmp  $0, %rax')
-  else
-    emit(ctx, 'cmp  $0, '..op_x)
-  end
-  emit(ctx, 'je '..convert_label(ctx, ir_stmt.label_name))
+function emit_stmt.jeq(ctx, ir_stmt)
+  emit_stmt_comparison_jump(ctx, ir_stmt, 'je')
 end
 
-function est.jnz(ctx, ir_stmt)
-  local op_x, type_x = operand(ctx, ir_stmt.register_x)
-  if type_x == 'literal' then
-    emit(ctx, 'mov  '..op_x..', %rax')
-    emit(ctx, 'cmp  $0, %rax')
-  else
-    emit(ctx, 'cmp  $0, '..op_x)
-  end
-  emit(ctx, 'jne '..convert_label(ctx, ir_stmt.label_name))
+function emit_stmt.jneq(ctx, ir_stmt)
+  emit_stmt_comparison_jump(ctx, ir_stmt, 'jne')
 end
 
-function est.jeq(ctx, ir_stmt)
-  emit_jump_comparison(ctx, 'je', ir_stmt)
+function emit_stmt.jlt(ctx, ir_stmt)
+  emit_stmt_comparison_jump(ctx, ir_stmt, 'jl')
 end
 
-function est.jneq(ctx, ir_stmt)
-  emit_jump_comparison(ctx, 'jne', ir_stmt)
+function emit_stmt.jgt(ctx, ir_stmt)
+  emit_stmt_comparison_jump(ctx, ir_stmt, 'jg')
 end
 
-function est.jlt(ctx, ir_stmt)
-  emit_jump_comparison(ctx, 'jl', ir_stmt)
+function emit_stmt.jleq(ctx, ir_stmt)
+  emit_stmt_comparison_jump(ctx, ir_stmt, 'jle')
 end
 
-function est.jgt(ctx, ir_stmt)
-  emit_jump_comparison(ctx, 'jg', ir_stmt)
+function emit_stmt.jgeq(ctx, ir_stmt)
+  emit_stmt_comparison_jump(ctx, ir_stmt, 'jge')
 end
 
-function est.jleq(ctx, ir_stmt)
-  emit_jump_comparison(ctx, 'jle', ir_stmt)
+function emit_stmt.jz(ctx, ir_stmt)
+  emit_stmt_comparison_jump_z(ctx, ir_stmt, 'je')
 end
 
-function est.jgeq(ctx, ir_stmt)
-  emit_jump_comparison(ctx, 'jge', ir_stmt)
+function emit_stmt.jnz(ctx, ir_stmt)
+  emit_stmt_comparison_jump_z(ctx, ir_stmt, 'jne')
 end
 
 local function emit_subroutine(ctx, ir_subr)
