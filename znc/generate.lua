@@ -176,12 +176,34 @@ local function emit_binary_arith_op(ctx, instr, ir_stmt)
   end
 end
 
+-- (i)nverse (s)et (c)omparison (i)nstruction (t)able
+local iscit = {
+  ['sete'] = 'setne',
+  ['setne'] = 'sete',
+  ['setl'] = 'setge',
+  ['setge'] = 'setl',
+  ['setg'] = 'setle',
+  ['setle'] = 'setg',
+}
+
 local function emit_comparison(ctx, set_instr, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
   local op_y, type_y = operand(ctx, ir_stmt.register_y)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   -- Destination can't be a literal, that doesn't make any damn sense
   if type_z == 'literal' then error('Invalid instruction') end
+
+  if not iscit[set_instr] then
+    error('Invalid set comparison instruction `'..set_instr..'`')
+  end
+
+  if type_y == 'literal' then
+    -- cmp requires its second argument not be a literal, so swap everything
+    op_x, op_y = op_y, op_x
+    type_x, type_y = type_y, type_x
+    io.write(set_instr..' -> '..iscit[set_instr]..'\n')
+    --set_instr = iscit[set_instr]
+  end
 
   if type_z == 'register' then
     -- op_z is a register, so only a single memory reference will be possible here
@@ -378,14 +400,24 @@ function est.jmp(ctx, ir_stmt)
 end
 function est.jz(ctx, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
-  if type_x == 'literal' then error('Invalid instruction') end
-  emit(ctx, 'cmp $0, '..op_x)
+  if type_x == 'literal' then
+    -- This does happen...
+    emit(ctx, 'mov  '..op_x..', %rax')
+    emit(ctx, 'cmp  $0, %rax')
+  else
+    emit(ctx, 'cmp  $0, '..op_x)
+  end
   emit(ctx, 'je '..convert_label(ctx, ir_stmt.label_name))
 end
 function est.jnz(ctx, ir_stmt)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
-  if type_x == 'literal' then error('Invalid instruction') end
-  emit(ctx, 'cmp $0, '..op_x)
+  if type_x == 'literal' then
+    -- This does happen...
+    emit(ctx, 'mov  '..op_x..', %rax')
+    emit(ctx, 'cmp  $0, %rax')
+  else
+    emit(ctx, 'cmp  $0, '..op_x)
+  end
   emit(ctx, 'jne '..convert_label(ctx, ir_stmt.label_name))
 end
 function est.jeq(ctx, ir_stmt)

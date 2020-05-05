@@ -3,6 +3,11 @@
 ZNC='../znc/znc'
 ZNC_LUA_PATH='../znc/?.lua'
 
+BENCH="$1"
+
+FAILED="\033[38;5;9mFAILED\033[39m"
+PASSED="\033[38;5;10mPASSED\033[39m"
+
 export LUA_PATH=$ZNC_LUA_PATH
 
 function test() {
@@ -14,7 +19,11 @@ function test() {
   RESULT=$?
 
   if [ $RESULT -ne 0 ]; then
-    echo -e "$1: \tFAILED COMPILER RETURNED ERROR $RESULT"
+    printf "%-30s $FAILED\n" "COMPILER RETURNED ERROR $RESULT"
+    if [ $BENCH == "bench" ]; then
+      echo "copying to bench"
+      cp $1 bench.zn
+    fi
     exit 1
   fi
 
@@ -26,7 +35,11 @@ function test() {
   RESULT=$?
 
   if [ $RESULT -ne 0 ]; then
-    echo -e "$1: \tFAILED ASSEMBLER RETURNED ERROR $RESULT"
+    printf "%-30s $FAILED\n" "ASSEMBLER RETURNED ERROR $RESULT"
+    if [ $BENCH == "bench" ]; then
+      echo "copying to bench"
+      cp $1 bench.zn
+    fi
     exit 1
   fi
 
@@ -39,9 +52,13 @@ function test() {
 
   echo -ne "\033[39m"
   if [ $RESULT == $2 ]; then
-    printf "%-30s \033[38;5;10mPASSED\033[39m\n" "$1 -> $RESULT"
+    printf "%-30s $PASSED\n" "$1 -> $RESULT"
   else
-    printf "%-30s \033[38;5;9mFAILED\033[39m EXPECTED $2\n" "$1 -> $RESULT"
+    printf "%-30s $FAILED EXPECTED $2\n" "$1 -> $RESULT"
+    if [ $BENCH == "bench" ]; then
+      echo "copying to bench"
+      cp $1 bench.zn
+    fi
     exit 1
   fi
 }
@@ -49,6 +66,8 @@ function test() {
 # TODO: Pick up where we left off
 
 test 'src/basic-add.zn' 6
+test 'src/basic-swap-0.zn' 0
+test 'src/basic-swap-1.zn' 1
 test 'src/cmp.zn' 49
 test 'src/if.zn' 7
 test 'src/multiple-return.zn' 25

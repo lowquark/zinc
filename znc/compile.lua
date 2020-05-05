@@ -153,140 +153,147 @@ function put_call(ctx, name_path, argument_exprs, return_regs)
   for k=#return_regs+1,#target_subr.returns do
     return_regs[k] = '~'
   end
-  -- Allocate temporary registers for argument expressions
+  -- Emit argument expressions
   local argument_regs = { }
   for k,ast_expr in ipairs(argument_exprs) do
-    argument_regs[k] = new_temp_reg(ctx)
-  end
-  -- Emit argument expressions
-  for k,ast_expr in ipairs(argument_exprs) do
-    put_expression(ctx, ast_expr, argument_regs[k])
+    argument_regs[k] = put_expression(ctx, ast_expr)
   end
   -- Actually emit call instruction (generate.lua does the heavy lifting now)
   emit(ctx, ir.call(return_regs, name, argument_regs))
 end
 
-local function put_binop_expression(ctx, dst_reg, expr_a, expr_b, ir_op_fn)
-  -- Emit first expression directly to destination
-  put_expression(ctx, expr_a, dst_reg)
-  -- Allocate a temporary register and emit second expression to it
-  local tmp_reg = new_temp_reg(ctx)
-  put_expression(ctx, expr_b, tmp_reg)
+local function put_binop_expression(ctx, expr_a, expr_b, ir_op_fn)
+  -- Emit expressions
+  local reg_x = put_expression(ctx, expr_a)
+  local reg_y = put_expression(ctx, expr_b)
+  local reg_z = new_temp_reg(ctx)
   -- Add temporary register to destination register
-  emit(ctx, ir_op_fn(dst_reg, dst_reg, tmp_reg))
+  emit(ctx, ir_op_fn(reg_z, reg_x, reg_y))
+  return reg_z
 end
 
 -- Emits the appropriate instructions to evaluate the given AST statement
-function put_expression(ctx, expr, dst_reg)
+function put_expression(ctx, expr)
   local h = pet[expr.type]
   if h then
-    return h(ctx, expr, dst_reg)
+    return h(ctx, expr)
   else
     io.write('Unknown expression type `'..expr.type..'`\n')
     os.exit(4)
   end
 end
 
-function pet.integer(ctx, expr, dst_reg)
-  emit(ctx, ir.mov(dst_reg, expr.value))
+function pet.integer(ctx, expr)
+  return expr.value
 end
 
-function pet.negate(ctx, expr, dst_reg)
-  put_expression(ctx, expr.expression, dst_reg)
-  emit(ctx, ir.neg(dst_reg, dst_reg))
+function pet.negate(ctx, expr)
+  local reg_x = put_expression(ctx, expr.expression)
+  local reg_z = new_temp_reg(ctx)
+  emit(ctx, ir.neg(reg_z, reg_x))
+  return reg_z
 end
 
-function pet.binnot(ctx, expr, dst_reg)
-  put_expression(ctx, expr.expression, dst_reg)
-  emit(ctx, ir.bnot(dst_reg, dst_reg))
+function pet.binnot(ctx, expr)
+  local reg_x = put_expression(ctx, expr.expression)
+  local reg_z = new_temp_reg(ctx)
+  emit(ctx, ir.bnot(reg_z, reg_x))
+  return reg_z
 end
 
-function pet.lognot(ctx, expr, dst_reg)
-  put_expression(ctx, expr.expression, dst_reg)
-  emit(ctx, ir.lnot(dst_reg, dst_reg))
+function pet.lognot(ctx, expr)
+  local reg_x = put_expression(ctx, expr.expression)
+  local reg_z = new_temp_reg(ctx)
+  emit(ctx, ir.lnot(reg_z, reg_x))
+  return reg_z
 end
 
-function pet.add(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.add)
+function pet.add(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.add)
 end
 
-function pet.sub(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.sub)
+function pet.sub(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.sub)
 end
 
-function pet.mul(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.mul)
+function pet.mul(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.mul)
 end
 
-function pet.div(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.div)
+function pet.div(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.div)
 end
 
-function pet.cmpeq(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.eq)
+function pet.cmpeq(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.eq)
 end
 
-function pet.cmpneq(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.neq)
+function pet.cmpneq(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.neq)
 end
 
-function pet.cmplt(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.lt)
+function pet.cmplt(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.lt)
 end
 
-function pet.cmpgt(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.gt)
+function pet.cmpgt(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.gt)
 end
 
-function pet.cmpleq(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.leq)
+function pet.cmpleq(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.leq)
 end
 
-function pet.cmpgeq(ctx, expr, dst_reg)
-  put_binop_expression(ctx, dst_reg, expr.expression_a, expr.expression_b, ir.geq)
+function pet.cmpgeq(ctx, expr)
+  return put_binop_expression(ctx, expr.expression_a, expr.expression_b, ir.geq)
 end
 
-function pet.logand(ctx, expr, dst_reg)
+function pet.logand(ctx, expr)
   local lab1 = newlabel(ctx)
   local lab2 = newlabel(ctx)
-  put_expression(ctx, expr.expression_a, dst_reg)
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
   -- If nonzero, jump to the evaluation of the next expression
-  -- Otherwise, set result to zero, and jump to end
-  emit(ctx, ir.jnz(lab1, dst_reg));
-  emit(ctx, ir.mov(dst_reg, 0));
+  -- Otherwise, set reg_z to zero, and jump to end
+  emit(ctx, ir.jnz(lab1, reg_x));
+  emit(ctx, ir.mov(reg_z, 0));
   emit(ctx, ir.jmp(lab2));
   emit(ctx, ir.label(lab1))
-  local tmp_reg = new_temp_reg(ctx)
-  put_expression(ctx, expr.expression_b, tmp_reg)
-  -- Set dst_reg to zero iff tmp_reg is zero
-  emit(ctx, ir.neq(dst_reg, tmp_reg, 0))
+  local reg_y = put_expression(ctx, expr.expression_b)
+  -- Set reg_z to zero iff reg_y is zero
+  emit(ctx, ir.neq(reg_z, reg_y, 0))
   emit(ctx, ir.label(lab2))
+  return reg_z
 end
 
-function pet.logor(ctx, expr, dst_reg)
+function pet.logor(ctx, expr)
   local lab1 = newlabel(ctx)
   local lab2 = newlabel(ctx)
-  put_expression(ctx, expr.expression_a, dst_reg)
+  local reg_z = new_temp_reg(ctx)
+  local reg_x = put_expression(ctx, expr.expression_a)
   -- If zero, jump to the evaluation of the next expression
-  -- Otherwise, set result to one, and jump to end
-  emit(ctx, ir.jz(lab1, dst_reg));
-  emit(ctx, ir.mov(dst_reg, 1));
+  -- Otherwise, set reg_z to one, and jump to end
+  emit(ctx, ir.jz(lab1, reg_x));
+  emit(ctx, ir.mov(reg_z, 1));
   emit(ctx, ir.jmp(lab2));
   emit(ctx, ir.label(lab1))
-  local tmp_reg = new_temp_reg(ctx)
-  put_expression(ctx, expr.expression_b, tmp_reg)
-  -- Set dst_reg to zero iff tmp_reg is zero
-  emit(ctx, ir.neq(dst_reg, tmp_reg, 0))
+  local reg_y = put_expression(ctx, expr.expression_b)
+  -- Set reg_z to zero iff reg_y is zero
+  emit(ctx, ir.neq(reg_z, reg_y, 0))
   emit(ctx, ir.label(lab2))
+  -- Our result is in reg_z
+  return reg_z
 end
 
-function pet.variable(ctx, expr, dst_reg)
-  emit(ctx, ir.mov(dst_reg, find_variable(ctx, expr.name)))
+function pet.variable(ctx, expr)
+  return find_variable(ctx, expr.name)
 end
 
-function pet.call(ctx, expr, dst_reg)
+function pet.call(ctx, expr)
   -- Function calls only yield their first return value to expressions
+  local dst_reg = new_temp_reg(ctx)
   put_call(ctx, expr.name_path, expr.arguments, { dst_reg })
+  return dst_reg
 end
 
 function put_statement(ctx, ast_stmt)
@@ -303,9 +310,8 @@ pst['if'] = function(ctx, ast_stmt)
     local lab1 = newlabel(ctx)
     local lab2 = newlabel(ctx)
     -- Put conditional expression into new temporary
-    local reg_exp = new_temp_reg(ctx)
-    put_expression(ctx, ast_stmt.expression, reg_exp)
-    emit(ctx, ir.jz(lab1, reg_exp))
+    local expr_reg = put_expression(ctx, ast_stmt.expression)
+    emit(ctx, ir.jz(lab1, expr_reg))
     -- Put if statement body
     put_statement(ctx, ast_stmt.if_statement)
     emit(ctx, ir.jmp(lab2))
@@ -316,9 +322,8 @@ pst['if'] = function(ctx, ast_stmt)
   else
     local lab1 = newlabel(ctx)
     -- Put conditional expression into new temporary
-    local reg_exp = new_temp_reg(ctx)
-    put_expression(ctx, ast_stmt.expression, reg_exp)
-    emit(ctx, ir.jz(lab1, reg_exp))
+    local expr_reg = put_expression(ctx, ast_stmt.expression)
+    emit(ctx, ir.jz(lab1, expr_reg))
     -- Put if statement body
     put_statement(ctx, ast_stmt.if_statement)
     emit(ctx, ir.label(lab1))
@@ -332,12 +337,16 @@ pst['return'] = function(ctx, ast_stmt)
                  ', but '..plz(#ast_stmt.expressions, 'was', 'were')..
                  ' provided')
   end
-  -- TODO: A single return value can have the mov instruction optimized out
   -- Allocate temporary registers for this multiple assignment and put expressions
   for i,expr in ipairs(ast_stmt.expressions) do
-    local tmp_reg = new_temp_reg(ctx)
-    put_expression(ctx, expr, tmp_reg)
-    expr_regs[#expr_regs+1] = tmp_reg
+    local expr_reg = put_expression(ctx, expr)
+    if expr_reg:sub(1, 1) == 'i' then
+      -- Going to need to buffer this one
+      local reg = new_temp_reg(ctx)
+      emit(ctx, ir.mov(reg, expr_reg))
+      expr_reg = reg
+    end
+    expr_regs[i] = expr_reg
   end
   -- Copy expression results into function argument space
   for i,expr in ipairs(ast_stmt.expressions) do
@@ -387,14 +396,29 @@ function pst.assignment(ctx, ast_stmt)
         report_error('Cannot assign '..plz(num_ex, 'expression', 'expressions')..
                      ' to '..plz(num_lv, 'lvalue', 'lvalues')..'.')
       end
-      -- TODO: A single assigned value can have the mov instruction optimized out
       -- Allocate temporary registers for this multiple assignment and put expressions
       local expr_regs = {}
       for i,ast_expr in ipairs(ast_stmt.expressions) do
-        local tmp_reg = new_temp_reg(ctx)
-        io.write('Assignment tmp_reg: '..tmp_reg..'\n')
-        put_expression(ctx, ast_expr, tmp_reg)
-        expr_regs[i] = tmp_reg
+        expr_regs[i] = put_expression(ctx, ast_expr, tmp_reg)
+      end
+      -- Buffer lvalue registers that need buffering
+      for i=1,#lvalue_regs do
+        local new_expr_reg
+        for j=i+1,#expr_regs do
+          if lvalue_regs[i] == expr_regs[j] then
+            -- This lvalue would be used after it has been assigned to!
+            if not new_expr_reg then
+              -- Allocate a register and save this lvalue
+              io.write(lvalue_regs[i]..' would be used at '..j..
+                       ' after being assigned at '..i..'\n')
+              new_expr_reg = new_temp_reg(ctx)
+              emit(ctx, ir.mov(new_expr_reg, expr_regs[j]))
+            end
+            -- Point to the new, copied value
+            assert(expr_regs[j] ~= new_expr_reg)
+            expr_regs[j] = new_expr_reg
+          end
+        end
       end
       -- Copy expression results into lvalues
       -- Lua does this in reverse for some reason. `a, a = 0, 1` yields a = 0

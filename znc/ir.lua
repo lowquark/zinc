@@ -419,7 +419,7 @@ local function stmt_string(stmt)
   if h then
     return h(stmt)
   else
-    error('Unknown IR statement type `'..stmt.type..'`')
+    error('Unknown IR statement type `'..tostring(stmt.type)..'`')
   end
 end
 
