@@ -51,6 +51,8 @@ function test() {
 test 'src/basic-add.zn' 6
 test 'src/cmp.zn' 49
 test 'src/if.zn' 7
+test 'src/multiple-return.zn' 25
+test 'src/structs.zn' 0
 
 rm -f a.out
 

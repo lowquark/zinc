@@ -1,0 +1,19 @@
+
+struct MyStruct {
+  int64 a;
+  int64 b;
+  Child child;
+
+  access my_module;
+}
+
+struct MyStruct:Child {
+  float c;
+}
+
+module my_module {
+  function main() -> (int64 _) {
+    return 0;
+  }
+}
+

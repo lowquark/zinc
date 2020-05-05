@@ -6,8 +6,6 @@
 local ast = require 'ast'
 local Lexer = require 'Lexer'
 
-local pprint = require 'pprint'
-
 ----------------------------------------------------------------------------------------------------
 -- Parser
 

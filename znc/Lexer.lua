@@ -17,7 +17,7 @@ end
 
 local function yield(L, token)
   L.next = token
-  print_token(token)
+  --print_token(token)
   return token
 end
 

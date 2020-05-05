@@ -4,6 +4,8 @@
 -- web.cs.ucla.edu/~palsberg/course/cs132/linearscan.pdf
 ----------------------------------------------------------------------------------------------------
 
+local pprint = require 'pprint'
+
 -- Computes the required size of the stack register file for the given subroutine
 local function compute_stack_size(subr)
   local max = 0
@@ -28,30 +30,45 @@ local function max_lifetimes(subr)
   local lifetimes = { }
   local n = #subr.statements
   local regs_by_start = {}
-  -- Search forward to find first definition of each register
+  -- Search forward to find first definition of each temporary register
   for k=1,n do
     local ir_stmt = subr.statements[k]
     local reg_z = ir_stmt.register_z
-    if reg_z and not start_idx[reg_z] then
-      if reg_z:sub(1,1) == 'r' then
+    if reg_z then
+      if not start_idx[reg_z] and reg_z:sub(1,1) == 'r' then
         start_idx[reg_z] = k
         regs_by_start[#regs_by_start+1] = reg_z
       end
     end
+    if ir_stmt.return_regs then
+      for i,reg in ipairs(ir_stmt.return_regs) do
+        if not start_idx[reg] and reg:sub(1,1) == 'r' then
+          start_idx[reg] = k
+          regs_by_start[#regs_by_start+1] = reg
+        end
+      end
+    end
   end
-  -- Search backward to find last reference to each register
+  -- Search backward to find last reference to each temporary register
   for k=n,1,-1 do
     local ir_stmt = subr.statements[k]
     local reg_x = ir_stmt.register_x
     local reg_y = ir_stmt.register_y
-    if reg_x and not end_idx[reg_x] then
-      if reg_x:sub(1,1) == 'r' then
+    if reg_x then
+      if not end_idx[reg_x] and reg_x:sub(1,1) == 'r' then
         end_idx[reg_x] = k
       end
     end
-    if reg_y and not end_idx[reg_y] then
-      if reg_y:sub(1,1) == 'r' then
+    if reg_y then
+      if not end_idx[reg_y] and reg_y:sub(1,1) == 'r' then
         end_idx[reg_y] = k
+      end
+    end
+    if ir_stmt.argument_regs then
+      for i,reg in ipairs(ir_stmt.argument_regs) do
+        if not end_idx[reg] and reg:sub(1,1) == 'r' then
+          end_idx[reg] = k
+        end
       end
     end
   end
@@ -198,6 +215,18 @@ local function lsra(subr, num_target_regs)
     if ir_stmt.register_z then
       new_reg = new_mapping[ir_stmt.register_z]
       if new_reg then ir_stmt.register_z = new_reg end
+    end
+    if ir_stmt.argument_regs then
+      for i,reg in ipairs(ir_stmt.argument_regs) do
+        new_reg = new_mapping[reg]
+        if new_reg then ir_stmt.argument_regs[i] = new_reg end
+      end
+    end
+    if ir_stmt.return_regs then
+      for i,reg in ipairs(ir_stmt.return_regs) do
+        new_reg = new_mapping[reg]
+        if new_reg then ir_stmt.return_regs[i] = new_reg end
+      end
     end
   end
   -- Update metadata

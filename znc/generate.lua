@@ -89,11 +89,10 @@ local function operand(ctx, name)
   local typestr = string.sub(name, 1, 1)
   if typestr == 'r' then
     -- Temporary access
-    local index = string.match(name, 'r(%d+)')
+    local index = tonumber(string.match(name, 'r(%d+)'))
     if not index then
       error('Invalid IR temporary register `'..name..'`')
     end
-    index = tonumber(index)
     if index > ctx.temp_count then
       error('Invalid IR temp register `'..name..'` exceeds maximum of `'..ctx.temp_count..'`')
     end
@@ -102,49 +101,30 @@ local function operand(ctx, name)
       return op, 'register'
     else
       error('No hardware register available for '..name)
-      --return tostring(-8*(index-1))..'(%rbp)', 'memory'
     end
   elseif typestr == 's' then
     -- Stack access
-    local index = string.match(name, 's(%d+)')
-    if index then
-      index = tonumber(index)
-    else
+    local index = tonumber(string.match(name, 's(%d+)'))
+    if not index then
       error('Invalid IR stack register `'..name..'`')
     end
     local stack_offset = -8*(index + 1)
     return stack_offset..'(%rbp)', 'memory'
-  elseif typestr == 'a' then
-    -- Call argument access
-    local call_data = ctx.call_data_stack[#ctx.call_data_stack]
-    if not call_data then
-      error('No matching begincall instruction for argument register `'..name..'`')
-    end
-    local index = string.match(name, 'a(%d+)')
-    if index then
-      index = tonumber(index)
-    else
-      error('Invalid IR argument register `'..name..'`')
-    end
-    -- Arguments are always relative to 
-    local stack_offset = -8*(call_data.args_index + index + 1)
-    return stack_offset..'(%rbp)', 'memory'
   elseif typestr == 'i' then
     -- Call input access
-    local index = string.match(name, 'i(%d+)')
-    if index then
-      index = tonumber(index)
-    else
+    local index = tonumber(string.match(name, 'i(%d+)'))
+    if not index then
       error('Invalid IR input/output register `'..name..'`')
     end
     local stack_offset = 8*(ctx.input_size - index + 1)
     return stack_offset..'(%rbp)', 'memory'
   else
     local integer = tonumber(name)
-    if not integer then
+    if integer then
+      return '$'..integer, 'literal'
+    else
       error('Failed to generate operand for `'..name..'`')
     end
-    return '$'..integer, 'literal'
   end
 end
 
@@ -332,34 +312,59 @@ function est.sfree(ctx, ir_stmt)
   emit_stack_dealloc(ctx, ir_stmt.size)
 end
 
-function est.begincall(ctx, ir_stmt)
-  local call_data = { }
-  call_data.args_size = ir_stmt.size
-  -- TODO: Use liveness information
-  -- TODO: Provide liveness information to this stage
-  -- TODO: Calculate liveness information
-  -- For now, save all possibly clobbered registers
-  for i=1,#otrt do
-    emit(ctx, 'push '..otrt[i])
+local function list_contains(t, v)
+  for i,_v in ipairs(t) do
+    if _v == v then return true end
   end
-  -- Allocate stack argument space, save beginning
-  call_data.args_index = ctx.stack_index
-  emit_stack_alloc(ctx, call_data.args_size)
-  -- Save call data for future endcall
-  table.insert(ctx.call_data_stack, call_data)
+  return false
 end
-function est.endcall(ctx, ir_stmt)
-  local call_data = table.remove(ctx.call_data_stack)
-  if not call_data then error('No matching begincall instruction for endcall instruction') end
-  -- Deallocate stack argument space
-  emit_stack_dealloc(ctx, call_data.args_size)
-  -- For now, restore all possibly clobbered registers
-  for i=#otrt,1,-1 do
-    emit(ctx, 'pop '..otrt[i])
-  end
-end
+
 function est.call(ctx, ir_stmt)
+  local return_ops = { }
+  local return_types = { }
+  local argument_ops = { }
+  local argument_types = { }
+  for i,reg in ipairs(ir_stmt.return_regs) do
+    if reg == '~' then
+      return_ops[i], return_types[i] = nil, nil
+    else
+      return_ops[i], return_types[i] = operand(ctx, reg)
+    end
+  end
+  for i,reg in ipairs(ir_stmt.argument_regs) do
+    argument_ops[i], argument_types[i] = operand(ctx, reg)
+  end
+  -- Save all possibly clobbered registers
+  local saved_regs = { }
+  for i=1,#otrt do
+    local reg = otrt[i]
+    if not list_contains(return_ops, reg) then
+      emit(ctx, 'push '..reg)
+      ctx.stack_index = ctx.stack_index + 1
+      saved_regs[#saved_regs+1] = reg
+    end
+  end
+  local arg_stack_idx = ctx.stack_index
+  local argument_size = math.max(#ir_stmt.return_regs, #ir_stmt.argument_regs)
+  -- Allocate stack argument space
+  emit_stack_alloc(ctx, argument_size)
+  -- Push arguments
+  for i=1,#argument_ops do
+    emit_mov(ctx, argument_ops[i], argument_types[i], (-8*(arg_stack_idx+i))..'(%rbp)', 'memory')
+  end
+  -- Emit actual call
   emit(ctx, 'call '..ir_stmt.name)
+  -- Grab return values
+  for i=1,#return_ops do
+    emit_mov(ctx, (-8*(arg_stack_idx+i))..'(%rbp)', 'memory', return_ops[i], return_types[i])
+  end
+  -- Deallocate stack argument space
+  emit_stack_dealloc(ctx, argument_size)
+  -- Restore all previously pushed registers, in reverse of course
+  for i=#saved_regs,1,-1 do
+    emit(ctx, 'pop  '..saved_regs[i])
+    ctx.stack_index = ctx.stack_index - 1
+  end
 end
 function est.ret(ctx, ir_stmt)
   emit_epilogue(ctx)
@@ -414,7 +419,6 @@ end
 local function emit_subroutine(ctx, ir_subr)
   ctx.temp_count = ir_subr.meta.temp_count
   ctx.input_size = math.max(#ir_subr.arguments, #ir_subr.returns)
-  ctx.call_data_stack = { }
   ctx.stack_index = 0
   -- Emit header
   emit(ctx, '.globl '..ir_subr.name)

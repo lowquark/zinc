@@ -4,7 +4,6 @@
 ----------------------------------------------------------------------------------------------------
 
 local ir = require 'ir'
-local pprint = require 'pprint'
 
 --[[
 --
@@ -129,7 +128,7 @@ local put_statement
 -- (p)ut (e)xpression (t)able
 local pet = { }
 -- (p)ut (s)tatement (t)able
-local pst = {}
+local pst = { }
 
 -- Appends an instruction onto the subroutine currently being generated
 function emit(ctx, ir_stmt)
@@ -138,39 +137,33 @@ end
 
 -- Emits the appropriate instructions to call a function
 -- If return_regs is specified, stores the first n return values in the given registers
-function put_call(ctx, name_path, arglist, return_regs)
+function put_call(ctx, name_path, argument_exprs, return_regs)
   -- Find the function in question
   local name = table.concat(name_path, '$')
   local target_subr = find_call(ctx, name_path)
-  local target_arg_num = #target_subr.arguments
-  local target_ret_num = #target_subr.returns
+  return_regs = return_regs or { }
   -- Validate the function call
-  if target_arg_num ~= #arglist then
+  if #argument_exprs ~= #target_subr.arguments then
     report_error('Wrong number of arguments for call to '..table.concat(name_path, ':')..'(...)')
   end
-  if return_regs and #return_regs > target_ret_num then
+  if #return_regs > #target_subr.returns then
     -- This is actually an internal error
     error('Too many return registers for function call')
   end
-  -- As far as the IR is concerned, argument space is return value space
-  local ir_arg_space = math.max(target_arg_num, target_ret_num)
-  -- Create an appropriate argument buffer
-  emit(ctx, ir.begincall(ir_arg_space))
-  -- Push arguments onto stack
-  for k,ast_expr in ipairs(arglist) do
-    -- Put expression to this argument register
-    put_expression(ctx, ast_expr, 'a'..(k-1))
+  for k=#return_regs+1,#target_subr.returns do
+    return_regs[k] = '~'
   end
-  -- Actually emit call instruction
-  emit(ctx, ir.call(name))
-  -- Move return values into first n destination registers
-  if return_regs then
-    for k=1,#return_regs do
-      emit(ctx, ir.mov(return_regs[k], 'a'..(k-1)));
-    end
+  -- Allocate temporary registers for argument expressions
+  local argument_regs = { }
+  for k,ast_expr in ipairs(argument_exprs) do
+    argument_regs[k] = new_temp_reg(ctx)
   end
-  -- Free argument buffer
-  emit(ctx, ir.endcall())
+  -- Emit argument expressions
+  for k,ast_expr in ipairs(argument_exprs) do
+    put_expression(ctx, ast_expr, argument_regs[k])
+  end
+  -- Actually emit call instruction (generate.lua does the heavy lifting now)
+  emit(ctx, ir.call(return_regs, name, argument_regs))
 end
 
 local function put_binop_expression(ctx, dst_reg, expr_a, expr_b, ir_op_fn)
@@ -293,15 +286,7 @@ end
 
 function pet.call(ctx, expr, dst_reg)
   -- Function calls only yield their first return value to expressions
-  if dst_reg:sub(1, 1) == 'a' then
-    -- It seems that a function call, with another function call as an argument expression, will
-    -- attempt to assign aX := a0. We need a temporary for this case!
-    local tmp_reg = new_temp_reg(ctx)
-    put_call(ctx, expr.name_path, expr.arguments, { tmp_reg })
-    emit(ctx, ir.mov(dst_reg, tmp_reg))
-  else
-    put_call(ctx, expr.name_path, expr.arguments, { dst_reg })
-  end
+  put_call(ctx, expr.name_path, expr.arguments, { dst_reg })
 end
 
 function put_statement(ctx, ast_stmt)

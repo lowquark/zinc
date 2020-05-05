@@ -21,8 +21,6 @@ leq
 geq
 salloc
 sfree
-begincall
-endcall
 call
 ret
 label
@@ -187,16 +185,14 @@ function ir.sfree(size)
   return { type = 'sfree', size = size }
 end
 
-function ir.begincall(size)
-  assert(size)
-  return { type = 'begincall', size = size }
-end
-function ir.endcall()
-  return { type = 'endcall' }
-end
-function ir.call(name)
+function ir.call(return_regs, name, argument_regs)
+  assert(return_regs)
   assert(name)
-  return { type = 'call', name = name }
+  assert(argument_regs)
+  return { type = 'call',
+           argument_regs = argument_regs,
+           name = name,
+           return_regs = return_regs }
 end
 function ir.ret()
   return { type = 'ret' }
@@ -359,14 +355,29 @@ function sst.geq(stmt)
   return stmt.register_z..' := '..stmt.register_x..' >= '..stmt.register_y
 end
 
-function sst.begincall(stmt)
-  return 'begincall '..stmt.size
-end
-function sst.endcall(stmt)
-  return 'endcall'
-end
 function sst.call(stmt)
-  return 'call '..stmt.name
+  local str = ''
+  if #stmt.return_regs > 0 then
+    str = '('
+    for i,return_reg in ipairs(stmt.return_regs) do
+      if i == 1 then
+        str = str..return_reg
+      else
+        str = str..', '..return_reg
+      end
+    end
+    str = str..') := '
+  end
+  str = str..stmt.name..' ('
+  for i,argument_reg in ipairs(stmt.argument_regs) do
+    if i == 1 then
+      str = str..argument_reg
+    else
+      str = str..', '..argument_reg
+    end
+  end
+  str = str..')'
+  return str
 end
 function sst.ret(stmt)
   return 'ret'
