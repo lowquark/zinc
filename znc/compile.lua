@@ -5,38 +5,10 @@
 
 local ir = require 'ir'
 
---[[
---
---  A note about nested call expressions:
---
---  begincall 4                 begincall 4
---  arg0 = x                    arg0 = x
---  arg1 = y                    arg1 = y
---  arg2 = call expression => | begincall 3
---  arg3 = z                  | arg0 = ...
---  endcall                   | arg1 = ...
---                            | call
---                            | tmp = arg2
---                            | endcall
---                              arg2 = tmp
---                              arg3 = z
---                              call
---                              endcall
---
---  1) The result of the call expression has no side-effects, and is stored in a temporary, just
---  like any other expression.
---
---  2) The begincall and endcall instructions give the implementation the opportunity to save and
---  restore physical registers that would be clobbered by passing of arguments in registers. This
---  will require stack space, but a push at begincall and a pop at endcall will not affect the
---  contiguity of the stack arguments.
---
---]]
-
 ----------------------------------------------------------------------------------------------------
 -- Utilities
 
--- Places correctly pluralized units on the given number and returns their combined string
+-- Places correctly pluralized units on the given number and returns the combined string
 local function plz(n, singular, plural)
   if n == 1 then
     return tostring(n)..' '..singular
@@ -61,15 +33,24 @@ local function dupscope(scope)
   return new_scope
 end
 
--- Temporary registers are allocated SSA-style via simple counter
--- This requires post processing!
+-- Copies the given table recursively
+local function deepcopy(t)
+  r = { }
+  for k,v in pairs(t) do
+    if v.type == 'table' then
+      r[k] = deepcopy(v)
+    else
+      r[k] = v
+    end
+  end
+  return r
+end
+
+-- Temporary registers are allocated via simple counter
+-- For the results of temporary expressions this means the register is SSA
 local function new_temp_reg(ctx)
   local idx = ctx.temp_index
   ctx.temp_index = ctx.temp_index + 1
-  -- Record high water mark
-  if ctx.temp_index > ctx.temp_index_max then
-    ctx.temp_index_max = ctx.temp_index
-  end
   return 'r'..idx
 end
 
@@ -92,7 +73,7 @@ local function find_variable(ctx, name)
   end
 end
 
--- Returns the subroutine which contains the given function path
+-- Returns the subroutine corresponding to the given function path
 -- TODO: Allowing module members to be referenced by absolute path necessitates merging this search
 -- with the search for local variables!
 local function find_call(ctx, name_path)
@@ -104,12 +85,13 @@ local function find_call(ctx, name_path)
   return subr
 end
 
+-- Attempts to create a new local variable in the current scope
 local function new_local_variable(ctx, type_spec, name)
   -- TODO: Acknowledge type specifier
   if ctx.local_scope[name] then
     report_error('`'..name..'` was already declared in this scope.')
   else
-    -- Allocate a new temporary register to this variable
+    -- Allocate a new temporary register to this variable (not SSA)
     local reg = new_temp_reg(ctx)
     ctx.local_scope[name] = reg
     io.write('local `'..name..'` is in register '..reg..'\n')
@@ -132,7 +114,8 @@ local pst = { }
 
 -- Appends an instruction onto the subroutine currently being generated
 function emit(ctx, ir_stmt)
-  table.insert(ctx.subroutine.statements, ir_stmt)
+  local stmts = ctx.subroutine.statements
+  stmts[#stmts+1] = ir_stmt
 end
 
 -- Emits the appropriate instructions to call a function
@@ -150,29 +133,71 @@ function put_call(ctx, name_path, argument_exprs, return_regs)
     -- This is actually an internal error
     error('Too many return registers for function call')
   end
+  -- The IR expects null registers for ignored return values. Lua can't store nil in a list, so we
+  -- use '~' to denote the nil register. TODO: Put IR register names behind an API.
   for k=#return_regs+1,#target_subr.returns do
     return_regs[k] = '~'
   end
-  -- Emit argument expressions
+  -- Find/generate argument expressions
   local argument_regs = { }
   for k,ast_expr in ipairs(argument_exprs) do
     argument_regs[k] = put_expression(ctx, ast_expr)
   end
-  -- Actually emit call instruction (generate.lua does the heavy lifting now)
+  -- Actually emit call instruction
   emit(ctx, ir.call(return_regs, name, argument_regs))
 end
 
+-- Emits the appropriate instructions to compute a simple unary arithmetic expression
+local function put_unop_expression(ctx, expr, ir_op_fn)
+  local reg_x = put_expression(ctx, expr)
+  local reg_z = new_temp_reg(ctx)
+  emit(ctx, ir_op_fn(reg_z, reg_x))
+  return reg_z
+end
+
+-- Emits the appropriate instructions to compute a simple binary arithmetic expression
 local function put_binop_expression(ctx, expr_a, expr_b, ir_op_fn)
-  -- Emit expressions
   local reg_x = put_expression(ctx, expr_a)
   local reg_y = put_expression(ctx, expr_b)
   local reg_z = new_temp_reg(ctx)
-  -- Add temporary register to destination register
   emit(ctx, ir_op_fn(reg_z, reg_x, reg_y))
   return reg_z
 end
 
--- Emits the appropriate instructions to evaluate the given AST statement
+-- Emits mov instructions to assign lvalue_regs := rvalue_regs, allocating temporaries as necessary
+local function put_assignment(ctx, lvalue_regs, rvalue_regs)
+  assert(#lvalue_regs == #rvalue_regs)
+  local n = #lvalue_regs
+  -- Make a copy for our own use
+  rvalue_regs = deepcopy(rvalue_regs)
+  -- Buffer lvalue registers that need buffering
+  for i=1,n do
+    local new_rvalue_reg
+    for j=i+1,n do
+      if lvalue_regs[i] == rvalue_regs[j] then
+        -- This lvalue would be used after it has been assigned to!
+        io.write(lvalue_regs[i]..' would be used in mov '..j..
+                 ' after being assigned in mov '..i..'\n')
+        if not new_rvalue_reg then
+          -- Allocate a register to save this lvalue, but only once
+          new_rvalue_reg = new_temp_reg(ctx)
+          emit(ctx, ir.mov(new_rvalue_reg, rvalue_regs[j]))
+        end
+        -- Point to the copied value instead
+        assert(rvalue_regs[j] ~= new_rvalue_reg)
+        rvalue_regs[j] = new_rvalue_reg
+      end
+    end
+  end
+  -- Copy expression results into lvalues
+  -- Lua does this in reverse for some reason. `a, a = 0, 1` yields a = 0
+  for i=1,n do
+    emit(ctx, ir.mov(lvalue_regs[i], rvalue_regs[i]))
+  end
+end
+
+-- Emits instructions as necessary to evaluate the given AST expression
+-- Returns a literal, or a register (not necessarily new) which contains the expression result
 function put_expression(ctx, expr)
   local h = pet[expr.type]
   if h then
@@ -188,24 +213,15 @@ function pet.integer(ctx, expr)
 end
 
 function pet.negate(ctx, expr)
-  local reg_x = put_expression(ctx, expr.expression)
-  local reg_z = new_temp_reg(ctx)
-  emit(ctx, ir.neg(reg_z, reg_x))
-  return reg_z
+  return put_unop_expression(ctx, expr.expression, ir.neg)
 end
 
 function pet.binnot(ctx, expr)
-  local reg_x = put_expression(ctx, expr.expression)
-  local reg_z = new_temp_reg(ctx)
-  emit(ctx, ir.bnot(reg_z, reg_x))
-  return reg_z
+  return put_unop_expression(ctx, expr.expression, ir.bnot)
 end
 
 function pet.lognot(ctx, expr)
-  local reg_x = put_expression(ctx, expr.expression)
-  local reg_z = new_temp_reg(ctx)
-  emit(ctx, ir.lnot(reg_z, reg_x))
-  return reg_z
+  return put_unop_expression(ctx, expr.expression, ir.lnot)
 end
 
 function pet.add(ctx, expr)
@@ -331,27 +347,22 @@ pst['if'] = function(ctx, ast_stmt)
 end
 
 pst['return'] = function(ctx, ast_stmt)
-  local expr_regs = {}
   if #ctx.ast_func.returns ~= #ast_stmt.expressions then
     report_error('Function returns '..plz(#ctx.ast_func.returns, 'value', 'values')..
                  ', but '..plz(#ast_stmt.expressions, 'was', 'were')..
                  ' provided')
   end
-  -- Allocate temporary registers for this multiple assignment and put expressions
-  for i,expr in ipairs(ast_stmt.expressions) do
-    local expr_reg = put_expression(ctx, expr)
-    if expr_reg:sub(1, 1) == 'i' then
-      -- Going to need to buffer this one
-      local reg = new_temp_reg(ctx)
-      emit(ctx, ir.mov(reg, expr_reg))
-      expr_reg = reg
-    end
-    expr_regs[i] = expr_reg
+  -- Prepare for multiple assignment
+  local n = #ctx.ast_func.returns
+  local lvalue_regs = {}
+  local rvalue_regs = {}
+  for i=1,n do
+    lvalue_regs[i] = 'i'..(i-1)
   end
-  -- Copy expression results into function argument space
-  for i,expr in ipairs(ast_stmt.expressions) do
-    emit(ctx, ir.mov('i'..(i-1), expr_regs[i]))
+  for i=1,n do
+    rvalue_regs[i] = put_expression(ctx, ast_stmt.expressions[i])
   end
+  put_assignment(ctx, lvalue_regs, rvalue_regs)
   -- Don't forget the return instruction!
   emit(ctx, ir.ret())
 end
@@ -377,7 +388,7 @@ function pst.assignment(ctx, ast_stmt)
       local reg = find_variable(ctx, name)
       table.insert(lvalue_regs, reg)
     else
-      report_error('Unknown lvalue type `'..ast_lvalue..'`')
+      report_error('Invalid lvalue type `'..ast_lvalue..'`')
     end
   end
   -- If expressions are given, evaluate and assign
@@ -396,35 +407,12 @@ function pst.assignment(ctx, ast_stmt)
         report_error('Cannot assign '..plz(num_ex, 'expression', 'expressions')..
                      ' to '..plz(num_lv, 'lvalue', 'lvalues')..'.')
       end
-      -- Allocate temporary registers for this multiple assignment and put expressions
-      local expr_regs = {}
+      -- Prepare for multiple assignment
+      local rvalue_regs = {}
       for i,ast_expr in ipairs(ast_stmt.expressions) do
-        expr_regs[i] = put_expression(ctx, ast_expr, tmp_reg)
+        rvalue_regs[i] = put_expression(ctx, ast_expr, tmp_reg)
       end
-      -- Buffer lvalue registers that need buffering
-      for i=1,#lvalue_regs do
-        local new_expr_reg
-        for j=i+1,#expr_regs do
-          if lvalue_regs[i] == expr_regs[j] then
-            -- This lvalue would be used after it has been assigned to!
-            if not new_expr_reg then
-              -- Allocate a register and save this lvalue
-              io.write(lvalue_regs[i]..' would be used at '..j..
-                       ' after being assigned at '..i..'\n')
-              new_expr_reg = new_temp_reg(ctx)
-              emit(ctx, ir.mov(new_expr_reg, expr_regs[j]))
-            end
-            -- Point to the new, copied value
-            assert(expr_regs[j] ~= new_expr_reg)
-            expr_regs[j] = new_expr_reg
-          end
-        end
-      end
-      -- Copy expression results into lvalues
-      -- Lua does this in reverse for some reason. `a, a = 0, 1` yields a = 0
-      for i=1,num_lv do
-        emit(ctx, ir.mov(lvalue_regs[i], expr_regs[i]))
-      end
+      put_assignment(ctx, lvalue_regs, rvalue_regs)
     end
   end
 end
@@ -442,7 +430,7 @@ function pst.block(ctx, ast_stmt)
 end
 
 function pst.call(ctx, ast_stmt)
-  -- Emit a call, without saving any return values
+  -- Emit a call, ignoring any return values
   put_call(ctx, ast_stmt.name_path, ast_stmt.arguments)
 end
 
@@ -464,15 +452,12 @@ local function compile_subroutine(ctx, ast_func)
   ctx.ast_func = ast_func
   -- Counter / high water mark for the temp stack
   ctx.temp_index = 0
-  ctx.temp_index_max = 0
   -- This function's scope -> IR register map
   ctx.local_scope = local_scope
   -- Counter for unique label generation
   ctx.label_index = 0
   -- Read statements from AST
   pst.block(ctx, ast_func.block)
-  -- Temp count wasn't known before compilation
-  subr.meta.temp_count = ctx.temp_index_max
   return subr
 end
 

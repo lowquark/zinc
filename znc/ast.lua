@@ -344,13 +344,19 @@ local function dump_module_decl(decl, level)
   local level = level or 0
   local indent = string.rep('  ', level)
   if decl.type == 'function' then
-    io.write(indent..'FUNCTION '..decl.name..' ( ')
+    io.write(indent..'FUNCTION '..decl.name..' (')
     for i,arg in ipairs(decl.arguments) do
-      io.write(type_spec_str(arg.type_specifier)..' '..arg.name..', ')
+      io.write(type_spec_str(arg.type_specifier)..' '..arg.name)
+      if i ~= #decl.arguments then
+        io.write(', ')
+      end
     end
-    io.write(') -> ( ')
+    io.write(') -> (')
     for i,ret in ipairs(decl.returns) do
-      io.write(type_spec_str(ret.type_specifier)..' '..ret.name..', ')
+      io.write(type_spec_str(ret.type_specifier)..' '..ret.name)
+      if i ~= #decl.returns then
+        io.write(', ')
+      end
     end
     io.write(')\n')
     dump_stmt(decl.block, level + 1)

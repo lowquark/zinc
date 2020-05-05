@@ -3,40 +3,6 @@
 -- IR - (I)ntermediate (R)epresentation
 ----------------------------------------------------------------------------------------------------
 
---[[
-
-mov
-neg
-bnot
-lnot
-add
-sub
-mul
-div
-eq
-neq
-lt
-gt
-leq
-geq
-salloc
-sfree
-call
-ret
-label
-jmp
-jeq
-jneq
-jz
-jnz
-jlt
-jgt
-jleq
-jgeq
-subroutine
-
-]]
-
 local function deepcopy(t)
   r = { }
   for k,v in pairs(t) do
@@ -50,7 +16,9 @@ local function deepcopy(t)
 end
 
 ----------------------------------------------------------------------------------------------------
--- Tree construction
+-- Program construction
+
+-- Unless otherwise specified, table values are copied
 
 local ir = {}
 
@@ -69,6 +37,7 @@ function ir.neg(reg_z, reg_x)
            register_z = reg_z,
            register_x = reg_x }
 end
+
 function ir.bnot(reg_z, reg_x)
   assert(reg_z)
   assert(reg_x)
@@ -76,6 +45,7 @@ function ir.bnot(reg_z, reg_x)
            register_z = reg_z,
            register_x = reg_x }
 end
+
 function ir.lnot(reg_z, reg_x)
   assert(reg_z)
   assert(reg_x)
@@ -93,6 +63,7 @@ function ir.add(reg_z, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 function ir.sub(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
@@ -102,6 +73,7 @@ function ir.sub(reg_z, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 function ir.mul(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
@@ -111,6 +83,7 @@ function ir.mul(reg_z, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 function ir.div(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
@@ -130,6 +103,7 @@ function ir.eq(reg_z, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 function ir.neq(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
@@ -139,6 +113,7 @@ function ir.neq(reg_z, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 function ir.lt(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
@@ -148,6 +123,7 @@ function ir.lt(reg_z, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 function ir.gt(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
@@ -157,6 +133,7 @@ function ir.gt(reg_z, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 function ir.leq(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
@@ -166,6 +143,7 @@ function ir.leq(reg_z, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 function ir.geq(reg_z, reg_x, reg_y)
   assert(reg_z)
   assert(reg_x)
@@ -180,6 +158,7 @@ function ir.salloc(size)
   assert(size)
   return { type = 'salloc', size = size }
 end
+
 function ir.sfree(size)
   assert(size)
   return { type = 'sfree', size = size }
@@ -190,10 +169,11 @@ function ir.call(return_regs, name, argument_regs)
   assert(name)
   assert(argument_regs)
   return { type = 'call',
-           argument_regs = argument_regs,
+           argument_regs = deepcopy(argument_regs),
            name = name,
-           return_regs = return_regs }
+           return_regs = deepcopy(return_regs) }
 end
+
 function ir.ret()
   return { type = 'ret' }
 end
@@ -203,11 +183,13 @@ function ir.label(name)
   assert(name)
   return { type = 'label', name = name }
 end
+
 -- Unconditional jump
 function ir.jmp(label_name)
   assert(label_name)
   return { type = 'jmp', label_name = label_name }
 end
+
 -- Jump if equal
 function ir.jeq(label_name, reg_x, reg_y)
   assert(label_name)
@@ -218,6 +200,7 @@ function ir.jeq(label_name, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 -- Jump if not equal
 function ir.jneq(label_name, reg_x, reg_y)
   assert(label_name)
@@ -228,6 +211,7 @@ function ir.jneq(label_name, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 -- Jump if zero
 function ir.jz(label_name, reg)
   assert(label_name)
@@ -236,6 +220,7 @@ function ir.jz(label_name, reg)
            label_name = label_name,
            register_x = reg }
 end
+
 -- Jump if nonzero
 function ir.jnz(label_name, reg)
   assert(label_name)
@@ -244,6 +229,7 @@ function ir.jnz(label_name, reg)
            label_name = label_name,
            register_x = reg }
 end
+
 -- Jump if less than
 function ir.jlt(label_name, reg_x, reg_y)
   assert(label_name)
@@ -254,6 +240,7 @@ function ir.jlt(label_name, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 -- Jump if greater than
 function ir.jgt(label_name, reg_x, reg_y)
   assert(label_name)
@@ -264,6 +251,7 @@ function ir.jgt(label_name, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 -- Jump if less than or equal
 function ir.jleq(label_name, reg_x, reg_y)
   assert(label_name)
@@ -274,6 +262,7 @@ function ir.jleq(label_name, reg_x, reg_y)
            register_x = reg_x,
            register_y = reg_y }
 end
+
 -- Jump if greater than or equal
 function ir.jgeq(label_name, reg_x, reg_y)
   assert(label_name)
@@ -285,15 +274,14 @@ function ir.jgeq(label_name, reg_x, reg_y)
            register_y = reg_y }
 end
 
-function ir.subroutine(args, rets, stmts, meta)
+function ir.subroutine(args, rets, stmts)
   assert(args)
   assert(rets)
   assert(stmts)
   return { type = 'subroutine',
-           arguments = args,
-           returns = rets,
-           statements = stmts,
-           meta = meta or { } }
+           arguments = deepcopy(args),
+           returns = deepcopy(rets),
+           statements = deepcopy(stmts) }
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -302,13 +290,6 @@ end
 -- (s)atement (s)tring (t)able
 local sst = {}
 
-function sst.salloc(stmt)
-  return 'salloc '..stmt.size
-end
-function sst.sfree(stmt)
-  return 'sfree '..stmt.size
-end
-
 function sst.mov(stmt)
   return stmt.register_z..' := '..stmt.register_x
 end
@@ -316,9 +297,11 @@ end
 function sst.neg(stmt)
   return stmt.register_z..' := -'..stmt.register_x
 end
+
 function sst.bnot(stmt)
   return stmt.register_z..' := ~'..stmt.register_x
 end
+
 function sst.lnot(stmt)
   return stmt.register_z..' := !'..stmt.register_x
 end
@@ -326,12 +309,15 @@ end
 function sst.add(stmt)
   return stmt.register_z..' := '..stmt.register_x..' + '..stmt.register_y
 end
+
 function sst.sub(stmt)
   return stmt.register_z..' := '..stmt.register_x..' - '..stmt.register_y
 end
+
 function sst.mul(stmt)
   return stmt.register_z..' := '..stmt.register_x..' * '..stmt.register_y
 end
+
 function sst.div(stmt)
   return stmt.register_z..' := '..stmt.register_x..' / '..stmt.register_y
 end
@@ -339,18 +325,23 @@ end
 function sst.eq(stmt)
   return stmt.register_z..' := '..stmt.register_x..' == '..stmt.register_y
 end
+
 function sst.neq(stmt)
   return stmt.register_z..' := '..stmt.register_x..' != '..stmt.register_y
 end
+
 function sst.lt(stmt)
   return stmt.register_z..' := '..stmt.register_x..' < '..stmt.register_y
 end
+
 function sst.gt(stmt)
   return stmt.register_z..' := '..stmt.register_x..' > '..stmt.register_y
 end
+
 function sst.leq(stmt)
   return stmt.register_z..' := '..stmt.register_x..' <= '..stmt.register_y
 end
+
 function sst.geq(stmt)
   return stmt.register_z..' := '..stmt.register_x..' >= '..stmt.register_y
 end
@@ -379,6 +370,7 @@ function sst.call(stmt)
   str = str..')'
   return str
 end
+
 function sst.ret(stmt)
   return 'ret'
 end
@@ -386,30 +378,39 @@ end
 function sst.label(stmt)
   return stmt.name..':'
 end
+
 function sst.jmp(stmt)
   return 'goto '..stmt.label_name
 end
+
 function sst.jz(stmt)
   return 'if !'..stmt.register_x..' goto '..stmt.label_name
 end
+
 function sst.jnz(stmt)
   return 'if '..stmt.register_x..' goto '..stmt.label_name
 end
+
 function sst.jeq(stmt)
   return 'if '..stmt.register_x..' == '..stmt.register_y..' goto '..stmt.label_name
 end
+
 function sst.jneq(stmt)
   return 'if '..stmt.register_x..' != '..stmt.register_y..' goto '..stmt.label_name
 end
+
 function sst.jlt(stmt)
   return 'if '..stmt.register_x..' < '..stmt.register_y..' goto '..stmt.label_name
 end
+
 function sst.jgt(stmt)
   return 'if '..stmt.register_x..' > '..stmt.register_y..' goto '..stmt.label_name
 end
+
 function sst.jleq(stmt)
   return 'if '..stmt.register_x..' <= '..stmt.register_y..' goto '..stmt.label_name
 end
+
 function sst.jgeq(stmt)
   return 'if '..stmt.register_x..' >= '..stmt.register_y..' goto '..stmt.label_name
 end
@@ -432,7 +433,6 @@ local function dump_statement(stmt)
 end
 
 function ir.dump_subroutine(subr)
-  io.write('  ; temp_count: '..subr.meta.temp_count..'\n')
   io.write('sub '..subr.name..' (')
   for i,arg_type in ipairs(subr.arguments) do
     io.write(arg_type)
@@ -451,7 +451,6 @@ function ir.dump_subroutine(subr)
   for i,stmt in ipairs(subr.statements) do
     dump_statement(stmt)
   end
-  io.write('\n')
 end
 
 -- Pretty-prints the given IR program object to io.output
@@ -459,28 +458,6 @@ function ir.dump(ir_prog)
   for i,subr in ipairs(ir_prog.subroutines) do
     ir.dump_subroutine(subr)
   end
-end
-
-----------------------------------------------------------------------------------------------------
--- Opcode information
-
-local function inputs(stmt)
-  -- Quadruplet representation makes this convenient
-  return stmt.register_x, stmt.register_y
-end
-
-local function outputs(stmt)
-  -- Quadruplet representation makes this convenient
-  return stmt.register_z
-end
-
-----------------------------------------------------------------------------------------------------
--- Other utilities
-
-function ir.dup(ir_any)
-  -- No metatables or recursion to worry about here -we can easily duplicate any portion of any IR
-  -- object.
-  return deepcopy(ir_any)
 end
 
 ir.statement_string = stmt_string

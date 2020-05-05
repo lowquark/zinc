@@ -4,8 +4,6 @@
 -- web.cs.ucla.edu/~palsberg/course/cs132/linearscan.pdf
 ----------------------------------------------------------------------------------------------------
 
-local pprint = require 'pprint'
-
 -- Computes the required size of the stack register file for the given subroutine
 local function compute_stack_size(subr)
   local max = 0
@@ -84,14 +82,12 @@ local function max_lifetimes(subr)
       table.insert(regs_by_start, 1, reg)
     end
   end
-  -- Create list of (valid) intervals for each register
+  -- Create list of intervals for each register
   for i,reg in ipairs(regs_by_start) do
     local k_begin = start_idx[reg]
     local k_end = end_idx[reg]
-    if k_end > k_begin then
-      -- We also happen to be iterating in order of start index, so append it to the list
-      table.insert(lifetimes, { reg = reg, k_begin = k_begin, k_end = k_end })
-    end
+    -- Iterating in order of start index, so just append
+    lifetimes[#lifetimes+1] = { reg = reg, k_begin = k_begin, k_end = k_end }
   end
   return lifetimes
 end
@@ -99,11 +95,11 @@ end
 -- Removes intervals from the given active set which have expired, i.e. k_end < k
 local function expire_old(active, free_regs, k)
   local n = #active
-  -- Partially remove expired ranges
+  -- Unset expired ranges
   for j=1,n do
     local interval_j = active[j]
     if interval_j.k_end >= k then
-      -- This interval is still going, so the rest are too. Exit early
+      -- This interval is still live, so the rest are too. Exit early
       break
     else
       -- Expired, free the register it's using
@@ -143,12 +139,9 @@ local function insert_interval(active, interval)
   active[n+1] = interval
 end
 
-local function spill_at_interval(active, interval)
-end
-
--- Converts the given subroutine into one which relies on only the given temporary registers
+-- Converts the given subroutine into one which only uses the given number of temporary registers
 local function lsra(subr, num_target_regs)
-  -- Compute lifetimes of each register
+  -- Compute coarse lifetime intervals of each register
   local lifetimes = max_lifetimes(subr)
   for k,interval in ipairs(lifetimes) do
     io.write(interval.reg..' is live on ['..interval.k_begin..', '..interval.k_end..')\n')
@@ -160,8 +153,7 @@ local function lsra(subr, num_target_regs)
   for k=1,num_target_regs do
     free_regs[k] = 'r'..(k-1)
   end
-  -- Stack index for the next spilled register, chosen to avoid existing stack indices
-  -- TODO: Should this be expected to be present on each IR subroutine?
+  -- Compute stack index for the next spilled register, chosen to avoid existing stack indices
   local spill_index = compute_stack_size(subr)
   -- Main loop
   for k,interval_i in ipairs(lifetimes) do
@@ -196,35 +188,35 @@ local function lsra(subr, num_target_regs)
     end
   end
   -- Construct a mapping table based on intervals' original and assigned registers
-  local new_mapping = { }
+  local mapping = { }
   for k,interval in ipairs(lifetimes) do
-    new_mapping[interval.reg] = interval.target_reg
-    io.write(interval.reg..' <- '..interval.target_reg..'\n')
+    mapping[interval.reg] = interval.target_reg
+    io.write('map '..interval.reg..' -> '..interval.target_reg..'\n')
   end
   -- Reindex everything according to remapped registers
   for k,ir_stmt in ipairs(subr.statements) do
     local new_reg
     if ir_stmt.register_x then
-      new_reg = new_mapping[ir_stmt.register_x]
+      new_reg = mapping[ir_stmt.register_x]
       if new_reg then ir_stmt.register_x = new_reg end
     end
     if ir_stmt.register_y then
-      new_reg = new_mapping[ir_stmt.register_y]
+      new_reg = mapping[ir_stmt.register_y]
       if new_reg then ir_stmt.register_y = new_reg end
     end
     if ir_stmt.register_z then
-      new_reg = new_mapping[ir_stmt.register_z]
+      new_reg = mapping[ir_stmt.register_z]
       if new_reg then ir_stmt.register_z = new_reg end
     end
     if ir_stmt.argument_regs then
       for i,reg in ipairs(ir_stmt.argument_regs) do
-        new_reg = new_mapping[reg]
+        new_reg = mapping[reg]
         if new_reg then ir_stmt.argument_regs[i] = new_reg end
       end
     end
     if ir_stmt.return_regs then
       for i,reg in ipairs(ir_stmt.return_regs) do
-        new_reg = new_mapping[reg]
+        new_reg = mapping[reg]
         if new_reg then ir_stmt.return_regs[i] = new_reg end
       end
     end
@@ -232,6 +224,7 @@ local function lsra(subr, num_target_regs)
   -- Update metadata
   subr.stack_size = spill_index
   subr.register_size = num_target_regs
+  subr.input_size = math.max(#subr.arguments, #subr.returns)
 end
 
 return lsra
