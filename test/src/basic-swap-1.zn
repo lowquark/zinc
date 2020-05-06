@@ -1,6 +1,6 @@
 
 module my_module {
-  function main() -> (int64 _) {
+  function main() -> (int64 ret) {
     int64 a = 0;
     int64 b = 1;
     a, b = b, a;

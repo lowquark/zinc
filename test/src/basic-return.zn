@@ -1,0 +1,7 @@
+
+module my_module {
+  function main() -> (int64 ret) {
+    return 30;
+  }
+}
+

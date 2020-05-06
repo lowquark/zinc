@@ -12,7 +12,7 @@ struct MyStruct:Child {
 }
 
 module my_module {
-  function main() -> (int64 _) {
+  function main() -> (int64 ret) {
     return 0;
   }
 }
