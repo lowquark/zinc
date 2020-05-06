@@ -1,19 +1,18 @@
 
 # Zinc
 
-Zinc is a data-driven programming language that I have mapped out and partially brought to life.
+Zinc is a data-driven programming language that I've laid out and partially brought to life.
 
 ### Features:
 
   * Namespaces
   * Declarations which are initialized by default
   * Multiple assignment / return values
-  * Const correctness
-  * Built-in data structures (list, map, etc.)
   * C++ style references (&)
-  * Write-access restrictions
+  * Built-in data structures (list, map, etc.)
+  * Constant data & write-access restrictions
 
-That last feature refers to a visibility scheme that I have dubbed `access`. Here's a code
+That last bullet refers to a visibility scheme that I have dubbed `access`. Here's a code
 demonstration:
 
     struct MyStruct {
@@ -37,14 +36,15 @@ demonstration:
       }
     }
 
-Basically, the modification of a struct is restricted to certain modules. All other functions are
+Basically, the modification of a struct is restricted to certain modules. All other modules are
 given read-only access. This is very similar to C++'s `friend`, but instead applies to namespaces
-(modules). This enables information hiding in a very straightforward way, and it expresses certain
-dataflow patterns very simply and explicitly in a way that I think traditional OOP solutions do not.
+(modules). If a module doesn't have acces, it sees everything as const. This enables the creation of
+object interfaces, and it expresses certain dataflow patterns very simply and explicitly in a way
+that I think traditional OOP solutions do not.
 
 # znc (Zinc Compiler)
 
-I have a few thousand lines of Lua that spit out x86-64 assembly. One day I would like to have a C
+I have a few thousand lines of Lua that spit out x86-64 assembly. One day I'd like to have a C
 implementation. It's not much yet, so here's some compiler output:
 
 ### Input file
