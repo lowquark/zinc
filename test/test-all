@@ -3,14 +3,37 @@
 ZNC='../znc/znc'
 ZNC_LUA_PATH='../znc/?.lua'
 
-BENCH="$1"
+OPTION="$1"
 
 FAILED="\033[38;5;9mFAILED\033[39m"
 PASSED="\033[38;5;10mPASSED\033[39m"
+STATUS_MSG_WIDTH=60
 
 export LUA_PATH=$ZNC_LUA_PATH
 
+function on_exit() {
+  rm -f a.out
+  rm -f asm.s
+}
+
+trap on_exit EXIT
+
+function handle_failure() {
+  # $1 - filename
+  # $2 - message
+
+  printf "%-${STATUS_MSG_WIDTH}b %b\n" "$2" "$FAILED"
+  if [ "$OPTION" == "bench" ]; then
+    echo "Copying $1 to bench.zn"
+    cp "$1" bench.zn
+  fi
+  exit 1
+}
+
 function test() {
+  # $1 - filename
+  # $2 - expected program return value
+
   echo -ne "\033[38;5;8m"
   echo "znc $1 asm.s"
   echo -ne "\033[39m"
@@ -18,13 +41,8 @@ function test() {
   eval $ZNC $1 asm.s >/dev/null 2>/dev/null
   RESULT=$?
 
-  if [ $RESULT -ne 0 ]; then
-    printf "%-30s $FAILED\n" "COMPILER RETURNED ERROR $RESULT"
-    if [ "$BENCH" == "bench" ]; then
-      echo "copying to bench"
-      cp $1 bench.zn
-    fi
-    exit 1
+  if [ "$RESULT" -ne 0 ]; then
+    handle_failure "$1" "znc returned error $RESULT"
   fi
 
   echo -ne "\033[38;5;8m"
@@ -34,13 +52,8 @@ function test() {
   gcc -g -m64 asm.s -o a.out
   RESULT=$?
 
-  if [ $RESULT -ne 0 ]; then
-    printf "%-30s $FAILED\n" "ASSEMBLER RETURNED ERROR $RESULT"
-    if [ "$BENCH" == "bench" ]; then
-      echo "copying to bench"
-      cp $1 bench.zn
-    fi
-    exit 1
+  if [ "$RESULT" -ne 0 ]; then
+    handle_failure "$1" "gcc returned error $RESULT"
   fi
 
   echo -ne "\033[38;5;8m"
@@ -51,15 +64,10 @@ function test() {
   RESULT=$?
 
   echo -ne "\033[39m"
-  if [ $RESULT == $2 ]; then
-    printf "%-30s $PASSED\n" "$1 -> $RESULT"
+  if [ "$RESULT" == "$2" ]; then
+    printf "%-${STATUS_MSG_WIDTH}s %b\n" "$1 -> $RESULT" "$PASSED"
   else
-    printf "%-30s $FAILED EXPECTED $2\n" "$1 -> $RESULT"
-    if [ "$BENCH" == "bench" ]; then
-      echo "copying to bench"
-      cp $1 bench.zn
-    fi
-    exit 1
+    handle_failure "$1" "$1 returned $RESULT, expected $2"
   fi
 }
 
@@ -68,13 +76,12 @@ function test() {
 test 'src/basic-return.zn' 30
 test 'src/basic-swap-0.zn' 0
 test 'src/basic-swap-1.zn' 1
+test 'src/basic-call.zn' 30
 test 'src/if.zn' 7
 test 'src/cmp.zn' 0
 test 'src/structs.zn' 0
 test 'src/binops.zn' 0
 test 'src/unops.zn' 0
-test 'src/multiple-return.zn' 25
-
-rm -f a.out
-rm -f asm.s
+test 'src/calls.zn' 0
+test 'src/multiple-assign-16.zn' 0
 

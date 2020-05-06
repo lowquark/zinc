@@ -1,0 +1,84 @@
+
+module my_module {
+  function main() -> (int64 ret) {
+    int64 a1 = 1;
+    int64 a2 = 2;
+    int64 a3 = 3;
+    int64 a4 = 4;
+    int64 a5 = 5;
+    int64 a6 = 6;
+    int64 a7 = 7;
+    int64 a8 = 8;
+    int64 a9 = 9;
+    int64 a10 = 10;
+    int64 a11 = 11;
+    int64 a12 = 12;
+    int64 a13 = 13;
+    int64 a14 = 14;
+    int64 a15 = 15;
+    int64 a16 = 16;
+
+    a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16 = 
+    a16, a15, a14, a13, a12, a11, a10, a9, a8, a7, a6, a5, a4, a3, a2, a1;
+
+    if(a16 != 1) { return 1; }
+    if(a15 != 2) { return 2; }
+    if(a14 != 3) { return 3; }
+    if(a13 != 4) { return 4; }
+    if(a12 != 5) { return 5; }
+    if(a11 != 6) { return 6; }
+    if(a10 != 7) { return 7; }
+    if(a9 != 8) { return 8; }
+    if(a8 != 9) { return 9; }
+    if(a7 != 10) { return 10; }
+    if(a6 != 11) { return 11; }
+    if(a5 != 12) { return 12; }
+    if(a4 != 13) { return 13; }
+    if(a3 != 14) { return 14; }
+    if(a2 != 15) { return 15; }
+    if(a1 != 16) { return 16; }
+
+    a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16 = 
+    a16, a15, a14, a13, a12, a11, a10, a9, a8, a7, a6, a5, a4, a3, a2, a1;
+
+    if(a16 != 16) { return 17; }
+    if(a15 != 15) { return 18; }
+    if(a14 != 14) { return 19; }
+    if(a13 != 13) { return 20; }
+    if(a12 != 12) { return 21; }
+    if(a11 != 11) { return 22; }
+    if(a10 != 10) { return 23; }
+    if(a9 != 9) { return 24; }
+    if(a8 != 8) { return 25; }
+    if(a7 != 7) { return 26; }
+    if(a6 != 6) { return 27; }
+    if(a5 != 5) { return 28; }
+    if(a4 != 4) { return 29; }
+    if(a3 != 3) { return 30; }
+    if(a2 != 2) { return 31; }
+    if(a1 != 1) { return 32; }
+
+    a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16 = 
+    a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16;
+
+    if(a16 != 16) { return 33; }
+    if(a15 != 15) { return 34; }
+    if(a14 != 14) { return 35; }
+    if(a13 != 13) { return 36; }
+    if(a12 != 12) { return 37; }
+    if(a11 != 11) { return 38; }
+    if(a10 != 10) { return 39; }
+    if(a9 != 9) { return 40; }
+    if(a8 != 8) { return 41; }
+    if(a7 != 7) { return 42; }
+    if(a6 != 6) { return 43; }
+    if(a5 != 5) { return 44; }
+    if(a4 != 4) { return 45; }
+    if(a3 != 3) { return 46; }
+    if(a2 != 2) { return 47; }
+    if(a1 != 1) { return 48; }
+
+    return 0;
+  }
+}
+

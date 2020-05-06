@@ -1,0 +1,10 @@
+
+module my_module {
+  function bla() -> (int64 ret) {
+    return 30;
+  }
+  function main() -> (int64 ret) {
+    return my_module:bla();
+  }
+}
+
