@@ -1,24 +1,20 @@
 
 # Zinc
 
-Zinc is an experimental, reduced systems language that I've been working on for the past few weeks.
+Zinc is a data-driven programming language that I dreamed up this semester.
 
-The language has the following features:
+### Planned Features:
 
   * Namespaces
-  * Declarations which are initialized by default *(lol)*
+  * Declarations which are initialized by default
   * Multiple assignment / return values
   * Const correctness
-  * Built-in data structures
+  * Built-in data structures (list, map, etc.)
+  * C++ style references (&)
+  * Member visibility restriction
 
-The language also has the following *anti-features*:
-
-  * No object methods *(getters/setters ok)*
-  * C++ style, non-null references
-  * No reference-type fields
-
-So far, this sounds like a safe, but hard-to-use version of C. Where Zinc is unique, is in its
-concept of struct access:
+That last bullet refers to a simple visibility scheme that I have dubbed `access`. Here's a code
+demonstration:
 
     struct MyStruct {
       int a;
@@ -41,27 +37,15 @@ concept of struct access:
       }
     }
 
-Essentially, only functions within approved modules may modify structs of a given type. All other
-modules have read-only access. If you're coming from C++, think of the `access module_a;`
-declaration as meaning `friend namespace module_a;`, if ever there were such a concept. (Naturally,
-this means `module module_a {` should be replaced with `namespace module_a {`, too.)
-
-As strange as this sounds, it isn't very different from the way things are done in object oriented
-programming (OOP). In OOP, the methods of an object are given exclusive access to an object's
-members, forming a robust interface to its data. Indeed, when only one Zinc module has access to a
-struct, its internals are abstracted away just the same.
-
-Though yet unproven, I envision this `access` concept as improving the structure of large, deeply
-nested codebases, where submodules are commissioned to manage specific blocks of data. To put it
-vaguely, it unifies the concepts of singletons, namespaces, and objects into a single continuum with
-simple, easy-to-refactor rules. But it's just an experiment.
-
-Otherwise, Zinc is your run-of-the-mill, semicoloned, C-family imperitave language.
+Basically, modifying a struct is restricted to functions that are in certain modules. All other
+functions have read-only access. This is very similar to C++'s `friend`, but instead applies to
+namespaces (modules). This allows for information hiding, and it expresses certain dataflow patterns
+very simply and explicitly in a way that I belive traditional OOP designs do not.
 
 # znc (Zinc Compiler)
 
-I have a few thousand lines of Lua that spit out x86-64 assembly in AT&T syntax. It's not much yet,
-so here's some compiler output:
+I have a few thousand lines of Lua that spit out x86-64 assembly. One day I would like to have a C
+implementation. It's not much yet, so here's some compiler output:
 
 ### Input file
 
