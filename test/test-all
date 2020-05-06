@@ -72,6 +72,8 @@ test 'src/cmp.zn' 0
 test 'src/if.zn' 7
 test 'src/multiple-return.zn' 25
 test 'src/structs.zn' 0
+test 'src/binops.zn' 0
+test 'src/unops.zn' 0
 
 rm -f a.out
 rm -f asm.s

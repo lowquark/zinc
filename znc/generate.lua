@@ -366,22 +366,39 @@ function emit_stmt.div(ctx, ir_stmt)
   local op_y, type_y = operand(ctx, ir_stmt.register_y)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   assert(type_z ~= 'literal', 'Invalid instruction')
-  -- Backup %rdx if applicable
-  if op_z ~= '%rdx' then
-    emit(ctx, 'mov  %rdx, %rcx')
-  end
-  -- Place our dividend in %rax
-  emit(ctx, 'mov  '..op_x..', %rax')
-  -- Sign extend %rax into %rdx.
-  -- This clobbers %rdx, and kills the crab.
-  emit(ctx, 'cqto')
-  -- Divide [%rdx:%rax] by the divisor (op_y)
-  emit(ctx, 'idivq '..op_y)
-  -- Move the quotient into our destination (op_z)
-  emit(ctx, 'mov  %rax, '..op_z)
-  -- Restore %rdx if applicable
-  if op_z ~= '%rdx' then
-    emit(ctx, 'mov  %rcx, %rdx')
+  -- idiv has no encodings with an immediate divisor
+  if type_y == 'literal' then
+    emit(ctx, 'movq '..op_x..', %rax')
+    emit(ctx, 'movq '..op_y..', %rcx')
+    -- Backup %rdx if it will not be used to return
+    if op_z ~= '%rdx' then
+      emit_push(ctx, '%rdx', 'register')
+    end
+    -- Sign extend %rax into %rdx.
+    -- This kills the crab.
+    emit(ctx, 'cqto')
+    -- Divide [%rdx:%rax] by %rcx
+    emit(ctx, 'idivq %rcx')
+    emit(ctx, 'movq %rax, '..op_z)
+    if op_z ~= '%rdx' then
+      emit_pop(ctx, '%rdx', 'register')
+    end
+  else
+    -- Backup %rdx if it will not be used to return
+    if op_z ~= '%rdx' then
+      emit(ctx, 'movq %rdx, %rcx')
+    end
+    -- Place our dividend in %rax
+    emit(ctx, 'movq '..op_x..', %rax')
+    -- Sign extend %rax into %rdx.
+    -- This kills the crab.
+    emit(ctx, 'cqto')
+    -- Divide [%rdx:%rax] by (op_y)
+    emit(ctx, 'idivq '..op_y)
+    emit(ctx, 'movq %rax, '..op_z)
+    if op_z ~= '%rdx' then
+      emit(ctx, 'movq %rcx, %rdx')
+    end
   end
 end
 
@@ -430,7 +447,7 @@ function emit_stmt.call(ctx, ir_stmt)
   for i=1,#otrt do
     local reg = otrt[i]
     if not list_contains(return_ops, reg) then
-      emit_push(ctx, reg)
+      emit_push(ctx, reg, 'register')
       saved_regs[#saved_regs+1] = reg
     end
   end
@@ -454,7 +471,7 @@ function emit_stmt.call(ctx, ir_stmt)
   emit_stack_dealloc(ctx, input_size)
   -- Restore all previously pushed registers
   for i=#saved_regs,1,-1 do
-    emit_pop(ctx, saved_regs[i])
+    emit_pop(ctx, saved_regs[i], 'register')
   end
 end
 

@@ -1,0 +1,8 @@
+
+module my_module {
+  function main() -> (int64 ret) {
+    if(10 / 10 != 1) { return 13; }
+    return 0;
+  }
+}
+
