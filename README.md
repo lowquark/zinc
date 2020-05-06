@@ -1,7 +1,7 @@
 
 # Zinc
 
-Zinc is a data-driven programming language that I have mapped out and *partially* brought to life.
+Zinc is a data-driven programming language that I have mapped out and partially brought to life.
 
 ### Features:
 
@@ -11,9 +11,10 @@ Zinc is a data-driven programming language that I have mapped out and *partially
   * Const correctness
   * Built-in data structures (list, map, etc.)
   * C++ style references (&)
-  * Member visibility restriction
+  * Write-access restrictions
 
-That feature refers to a visibility scheme that I have dubbed `access`. Here's a code demonstration:
+That last feature refers to a visibility scheme that I have dubbed `access`. Here's a code
+demonstration:
 
     struct MyStruct {
       int a;
