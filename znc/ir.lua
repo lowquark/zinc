@@ -18,7 +18,7 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Program construction
 
--- Unless otherwise specified, table values are copied
+-- Unless otherwise specified, table arguments are copied
 
 local ir = {}
 
