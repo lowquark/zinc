@@ -1,46 +1,132 @@
 
 # Zinc
 
-Zinc is a data-driven programming language that I've laid out and partially brought to life.
+Zinc is my experimental, data-driven, systems programming language project. It aims to provide
+simple, consistent structure throughout programs, minimize undefined behavior, and hopefully reduce
+the [mental space](http://www.paulgraham.com/head.html) required for good software architecture.
 
-### Features:
+## Features of the language
 
-  * Namespaces
-  * Declarations which are initialized by default
-  * Multiple assignment / return values
-  * C++ style references (&)
-  * Built-in data structures (list, map, etc.)
-  * Constant data & write-access restrictions
+Zinc is essentially a simplified version of C, with built-in lists and dictionaries; stricter,
+C++*-style* references; and a simple, but flexible encapsulation technique.
 
-That last bullet refers to a visibility scheme that I have dubbed `access`. Here's a code
-demonstration:
+Since Zinc is mostly still on paper, I can't promise these ideas aren't half-baked, but they seem
+fine so far. In any case, the features I'm working toward are listed here.
+
+### Initialization by default
+
+It goes without saying that the world would be a better place if I had to specify `uninitialized int
+a;` instead of `int a;` to risk undefined behavior. It's 2020. Initialization is the rule, not the
+exception!
+
+### Heirarchical naming (namespaces)
+
+Like every other modern language, Zinc uses namespaces to cut down on the length of descriptive
+names. Zinc uses a single ':' as a namespace separator, e.g.: `my_module:sub_module:foo();` or
+`my_module:Bar bar;`.
+
+### Multiple assignment & return values
+
+I've found that only returning a single value from a function can be frustratingly asymmetric.
+Workarounds (at least in C++) are clunky and always add boilerplate. The simple solution is to
+implement multiple assignment and let the compiler take care of the details.
+
+This makes returning status codes, or additional, optional information very convenient:
+
+    x, x_is_valid = complex_task(...);
+    if(x_is_valid) {
+      // ... use x
+    }
+
+Not to mention, swapping in a one-liner is *supremely* satisfying:
+
+    a, b = b, a;
+
+### Built-in data structures
+
+Like Python, the Zinc language itself provides built-in data structures. This is in contrast to C++,
+whose standard data structures are implemented in C++.
+
+The most important advantage to having built-in data structures is that it drastically simplifies
+iteration by avoiding the need for iterators. It also enables optimized behavior without exposing
+hard-to-use features into the language, and it promotes more standardized interfaces between
+libraries.
+
+Ideally, something like the following should be possible, all memory managed:
+
+    function main() {
+      // Declares a list of int64s
+      list<int64> my_list;
+      // append(...) is an (overloaded) builtin, much like sizeof(...)
+      append(my_list, 5);
+      append(my_list, 5);
+      append(my_list, 5);
+      // Read 'em and weep
+      for(int64 idx, int64 val in my_list) {
+        print(idx, val);
+      }
+    }
+
+Of course, Bjarne Stroustrup advertized the same thing once upon a time.
+
+### Stack-only, never-null references
+
+There is a growing trend in the language development community to rethink memory management and
+safety. Case in point: Rust. Zinc joins this trend by reducing the scope of when and where memory
+references may be used. In Zinc, references are very similar to C++ references (`&`, not `\*`), with
+the additional stipulation that they may only be stored on the stack.
+
+    struct MyStruct {
+      const OtherStruct & other_struct; // This is an error, no references outside of functions
+    }
+
+    function main() {
+      // These are ok
+      const OtherStruct & other_struct = find_the_other(); // Returns a reference to an object
+      do_something(other_struct) // Passed by reference (or copied, depending on signature)
+    }
+
+Though restrictive, this is a more data-oriented approach to memory management. Instead of
+referencing related objects explicitly with a memory address, objects must reference their peers
+with some kind of context-specific state variable. In other words, an object must store the other
+object's array index or dictionary key.
+
+In return, the compiler can generate copy constructors, move constructors, and automatic
+serialization/deserialization very easily. The implementation of built-in data structures is
+simplified too. Not to mention, references-to-references don't exist. It's not necessarily safe, and
+it isn't always pretty (sentinel objects may be required!), but it's easier to get right, and that
+just might reduce bugs.
+
+### Const-qualification & write-access restrictions
+
+Zinc ensures internal-consistency of structs through a particular `access` paradigm. The simplest
+way to describe this is with a code demonstration:
 
     struct MyStruct {
       int a;
-      access module_a;
+      access module_a;       // MyStruct grants access to functions within module_a
     }
 
     module module_a {
       function foo() {
-        // OK
         MyStruct my_struct;
-        my_struct.a = 5;
+        my_struct.a = 5;     // module_a modifies a MyStruct - OK
       }
     }
 
     module module_b {
       function bar() {
-        // Not OK! module_b does not have access to MyStruct.
         MyStruct my_struct;
-        my_struct.a = 5;
+        my_struct.a = 5;     // Not OK! module_b does not have access to MyStruct.
       }
     }
 
-Basically, the modification of a struct is restricted to certain modules. All other modules are
-given read-only access. This is very similar to C++'s `friend`, but instead applies to namespaces
-(modules). If a module doesn't have acces, it sees everything as const. This enables the creation of
-object interfaces, and it expresses certain dataflow patterns very simply and explicitly in a way
-that I think traditional OOP solutions do not.
+Basically, the modification of structs is restricted to certain modules ---those which have *access*
+. All other modules are given read-only access. This provides encapsulation as far as
+internal-consistency is concerned, though it still allows data to be read from anywhere.
+
+In my tests, I have found this concept to express and enforce certain dataflow patterns remarkably
+elegantly. But that's just me.
 
 # znc (Zinc Compiler)
 
