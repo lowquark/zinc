@@ -276,7 +276,8 @@ function ir.jgeq(label_name, reg_x, reg_y)
            register_y = reg_y }
 end
 
-function ir.subroutine()
+function ir.subroutine(name)
+  -- XXX All of these metatables are different! lol
   local function alloc_temporary(self, count)
     assert(type(count) == 'number')
     -- Simply return the next n temporaries
@@ -331,7 +332,8 @@ function ir.subroutine()
       add_statement = add_statement,
     }
   }
-  local subr = { locals = { },
+  local subr = { name = name,
+                 locals = { },
                  size_arguments = 0,
                  size_returns = 0,
                  size_stack = 0,

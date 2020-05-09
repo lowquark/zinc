@@ -4,10 +4,13 @@ Full parser grammar, in extended BNF:
     <name-path-rest> := { ':' <name> }
     <name-path> := <name> <name-path-rest>
 
+    <lvalue> := <name-path> [ '[' <integer> ']' ]
+
     <expression-p0> := '(' <expression> ')'
                      | ( '-' | '~' | '!' ) <expression-p0>
                      | <integer>
-                     | <name-path> [ '[' <integer> ']' ] [ '(' [ <arguments> ] ')' ]
+                     | <name-path> [ '(' [ <arguments> ] ')' ]
+                     | <lvalue>
     <expression-p1> := <expression-p0> { ( '*' | '/' ) <expression-p0> }
     <expression-p2> := <expression-p1> { ( '+' | '-' ) <expression-p1> }
     <expression-p3> := <expression-p2> { ( '<' | '>' | '<=' | '>=' ) <expression-p2> }
@@ -31,8 +34,9 @@ Full parser grammar, in extended BNF:
 
     <function-call> := <name-path> '(' [ <arguments> ] ')'
 
-    <lvalue> := <type-specifier> <name> | <name-path> [ '[' <integer> ']' ]
-    <assignment> := <lvalue> { ',' <lvalue> } [ '=' <expression> { ',' <expression> } ] ';'
+    <lvalue-decl> := <type-specifier> <name> | <lvalue>
+    <assignment> := <lvalue-decl> { ',' <lvalue-decl> }
+                    [ '=' <expression> { ',' <expression> } ] ';'
 
     <statement> := <return-statement>
                  | <block>

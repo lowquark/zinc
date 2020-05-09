@@ -6,10 +6,15 @@
 ----------------------------------------------------------------------------------------------------
 -- Tree construction
 
+
 ast = { }
 
+local name_path_meta = { }
+function name_path_meta.__tostring(self)
+  return table.concat(self, ':')
+end
 function ast.name_path()
-  return { }
+  return setmetatable({ }, name_path_meta)
 end
 
 function ast.type_specifier(name_path, const, ref, quantity)
@@ -26,7 +31,7 @@ function ast.lvalue_declaration(type_spec, name)
   return { type = 'declaration', type_specifier = type_spec, name = name }
 end
 
-function ast.lvalue_reference(name_path, index_exprs)
+function ast.lvalue(name_path, index_exprs)
   assert(type(name_path) == 'table')
   assert(not index_exprs or type(index_exprs) == 'table')
   return { type = 'reference', name_path = name_path, index_expressions = index_exprs }
@@ -37,10 +42,16 @@ function ast.expr_integer(value)
   assert(value)
   return { type = 'integer', value = value }
 end
-function ast.expr_variable(name, index_exprs)
-  assert(type(name) == 'string')
-  assert(not index_exprs or type(index_exprs) == 'table')
-  return { type = 'variable', name = name, index_expressions = index_exprs }
+function ast.expr_call(name_path, args)
+  assert(name_path)
+  assert(args)
+  return { type = 'call',
+           name_path = name_path,
+           arguments = args }
+end
+function ast.expr_lvalue(lvalue)
+  assert(type(lvalue) == 'table')
+  return { type = 'lvalue', lvalue = lvalue }
 end
 
 function ast.expr_negate(subexpr)
@@ -141,14 +152,6 @@ function ast.expr_logor(subexpr_a, subexpr_b)
   return { type = 'logor',
            expression_a = subexpr_a,
            expression_b = subexpr_b }
-end
-
-function ast.expr_call(name_path, args)
-  assert(name_path)
-  assert(args)
-  return { type = 'call',
-           name_path = name_path,
-           arguments = args }
 end
 
 -- Statements: block | local | if | return | assign | call
@@ -266,10 +269,17 @@ end
 function dump_lvalue(lvalue, level)
   local level = level or 0
   local indent = string.rep('  ', level)
+  local indent2 = string.rep('  ', level+1)
   if lvalue.type == 'declaration' then
     io.write(indent..'DECLARATION '..type_spec_str(lvalue.type_specifier)..' '..lvalue.name..'\n')
   elseif lvalue.type == 'reference' then
     io.write(indent..'REFERENCE '..table.concat(lvalue.name_path, ':')..'\n')
+    if lvalue.index_expressions then
+      for i,idx_expr in ipairs(lvalue.index_expressions) do
+        io.write(indent2..'INDEX\n')
+        dump_expr(idx_expr, level+2)
+      end
+    end
   else
     error('unknown lvalue type `'..lvalue.type..'`')
   end
@@ -279,25 +289,18 @@ function dump_expr(expr, level)
   local level = level or 0
   local indent = string.rep('  ', level)
   local indent2 = string.rep('  ', level+1)
-  io.write(indent..string.upper(expr.type)..' ')
   if expr.type == 'call' then
-    io.write(table.concat(expr.name_path, ':')..'\n')
+    io.write(indent..'CALL '..table.concat(expr.name_path, ':')..'\n')
     for k,arg_expr in ipairs(expr.arguments) do
       dump_expr(arg_expr, level+1)
     end
-  elseif expr.type == 'variable' then
-    io.write(expr.name..'\n')
-    if expr.index_expressions then
-      for i,idx_expr in ipairs(expr.index_expressions) do
-        io.write(indent2..'INDEX\n')
-        dump_expr(idx_expr, level+2)
-      end
-    end
+  elseif expr.type == 'lvalue' then
+    io.write(indent..'LVALUE\n')
+    dump_lvalue(expr.lvalue, level+1)
   else
+    io.write(indent..string.upper(expr.type)..' ')
     if expr.value then
       io.write(tostring(expr.value)..'\n')
-    elseif expr.name then
-      io.write(expr.name..'\n')
     else
       io.write('\n')
     end

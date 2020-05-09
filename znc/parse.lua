@@ -163,6 +163,25 @@ local function expect_name_path(L)
   return parse_name_path_rest(L, expect_name(L))
 end
 
+-- Tries to parse the rule: <lvalue>
+-- Returns the AST object for an lvalue
+local function parse_lvalue(L)
+  -- <name-path> [ '[' <integer> ']' ]
+  local name_path = parse_name_path(L)
+  if name_path then
+    local index_exprs
+    while parse_token(L, 'lsquare') do
+      -- Index expression
+      index_exprs = index_exprs or { }
+      index_exprs[#index_exprs + 1] = expect_expression(L)
+      expect_token(L, 'rsquare')
+    end
+    -- Name paths are currently accepted by the parser but they have no meaning
+    if #name_path ~= 1 then error('Absolute variable names are unsupported as of yet.') end
+    return ast.lvalue(name_path, index_exprs)
+  end
+end
+
 -- Tries to parse the rule: <struct-access-declaration>
 -- Returns the AST object for a struct access declaration
 local function parse_struct_access_declaration(L)
@@ -299,6 +318,8 @@ local function parse_expression_p0(L)
     L:read()
     return ast.expr_integer(value)
   else
+    -- <name-path> [ '(' [ <arguments> ] ')' ]
+    local st = L:state()
     local name_path = parse_name_path(L)
     if name_path then
       if parse_token(L, 'lparen') then
@@ -307,19 +328,12 @@ local function parse_expression_p0(L)
         expect_token(L, 'rparen')
         return ast.expr_call(name_path, args)
       end
-      local index_exprs
-      while parse_token(L, 'lsquare') do
-        -- Index expression
-        index_exprs = index_exprs or { }
-        index_exprs[#index_exprs + 1] = expect_expression(L)
-        expect_token(L, 'rsquare')
-      end
-      -- Name paths are currently accepted by the parser but they have no meaning
-      if #name_path ~= 1 then error('Absolute variable names are unsupported as of yet.') end
-      local name = name_path[1]
-      return ast.expr_variable(name, index_exprs)
-    else
-      return nil
+    end
+    -- <lvalue>
+    L:reset(st)
+    local lvalue = parse_lvalue(L)
+    if lvalue then
+      return ast.expr_lvalue(lvalue)
     end
   end
 end
@@ -537,9 +551,9 @@ local function parse_function_call(L)
   L:reset(st)
 end
 
--- Tries to parse the rule: <lvalue>
+-- Tries to parse the rule: <lvalue-decl>
 -- Returns the AST object for an lvalue
-local function parse_lvalue(L)
+local function parse_lvalue_decl(L)
   -- <type-specifier> <name>
   local st = L:state()
   local type_spec = parse_type_specifier(L)
@@ -549,27 +563,15 @@ local function parse_lvalue(L)
       return ast.lvalue_declaration(type_spec, name)
     end
   end
-  -- <name-path> [ '[' <integer> ']' ]
+  -- <lvalue>
   L:reset(st)
-  local name_path = parse_name_path(L)
-  if name_path then
-    local index_exprs
-    while parse_token(L, 'lsquare') do
-      -- Index expression
-      index_exprs = index_exprs or { }
-      index_exprs[#index_exprs + 1] = expect_expression(L)
-      expect_token(L, 'rsquare')
-    end
-    -- Name paths are currently accepted by the parser but they have no meaning
-    if #name_path ~= 1 then error('Absolute variable names are unsupported as of yet.') end
-    return ast.lvalue_reference(name_path, index_exprs)
-  end
+  return parse_lvalue(L)
 end
 
--- Expects to parse the rule: <lvalue>
+-- Expects to parse the rule: <lvalue-decl>
 -- Returns the AST object for an lvalue
-local function expect_lvalue(L)
-  local lvalue = parse_lvalue(L)
+local function expect_lvalue_decl(L)
+  local lvalue = parse_lvalue_decl(L)
   if not lvalue then
     parse_abort_expected(L, 'lvalue')
   end
@@ -582,12 +584,12 @@ local function parse_assignment(L)
   local lvalue_list = {}
   local expr_list = {}
   -- Assignment begins with an lvalue
-  local lvalue = parse_lvalue(L)
+  local lvalue = parse_lvalue_decl(L)
   if not lvalue then return end
   table.insert(lvalue_list, lvalue)
   -- Keep reading lvalues if given
   while parse_token(L, 'comma') do
-    lvalue = expect_lvalue(L)
+    lvalue = expect_lvalue_decl(L)
     table.insert(lvalue_list, lvalue)
   end
   -- True assigment requires an equals sign, but local variable declarations need not have one
