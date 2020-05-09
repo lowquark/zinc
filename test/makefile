@@ -3,7 +3,7 @@ ZNC=../znc/znc
 # I'm sure there's a better way to do this
 ZNC_LUA_PATH=../znc/?.lua
 
-.PHONY: bench clean
+.PHONY: bench.s clean
 
 bench: bench.s
 	gcc -g -m64 $^ -o $@

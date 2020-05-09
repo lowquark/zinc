@@ -224,7 +224,7 @@ local function lsra(subr, num_target_regs)
   -- Update metadata
   subr.stack_size = spill_index
   subr.register_size = num_target_regs
-  subr.input_size = math.max(#subr.arguments, #subr.returns)
+  subr.input_size = math.max(subr.size_arguments, subr.size_returns)
 end
 
 return lsra

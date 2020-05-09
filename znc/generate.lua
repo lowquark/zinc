@@ -519,6 +519,26 @@ function emit_stmt.jnz(ctx, ir_stmt)
   emit_stmt_comparison_jump_z(ctx, ir_stmt, 'jne')
 end
 
+function emit_stmt.stackaddr(ctx, ir_stmt)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  assert(type_z ~= 'literal', 'Invalid instruction')
+  if type_z == 'register' then
+    emit(ctx, 'movq %rbp, '..op_z)
+    emit(ctx, 'addq '..-8*(ir_stmt.index + 1)..', '..op_z)
+  else
+    emit(ctx, 'movq %rbp, %rax')
+    emit(ctx, 'addq '..-8*(ir_stmt.index + 1)..', %rax')
+    emit(ctx, 'movq %rax, '..op_z)
+  end
+end
+
+function emit_stmt.ldr(ctx, ir_stmt)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  assert(type_z ~= 'literal', 'Invalid instruction')
+  emit(ctx, 'movq ('..op_x..'), '..op_z)
+end
+
 local function emit_subroutine(ctx, ir_subr)
   -- Initialize context
   ctx.stack_index = 0

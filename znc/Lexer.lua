@@ -84,6 +84,12 @@ local function read(L)
     elseif c == ')' then
       c = readc(L)
       return yield(L, token 'rparen')
+    elseif c == '[' then
+      c = readc(L)
+      return yield(L, token 'lsquare')
+    elseif c == ']' then
+      c = readc(L)
+      return yield(L, token 'rsquare')
     elseif c == ';' then
       c = readc(L)
       return yield(L, token 'semicolon')

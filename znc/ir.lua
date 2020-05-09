@@ -22,42 +22,54 @@ end
 
 local ir = {}
 
+function ir.tempreg(index)
+  return 'r'..index
+end
+
+function ir.argreg(index)
+  return 'a'..index
+end
+
+function ir.retreg(index)
+  return 'b'..index
+end
+
 function ir.mov(reg_z, reg_x)
-  assert(reg_z)
-  assert(reg_x)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
   return { type = 'mov',
            register_z = reg_z,
            register_x = reg_x }
 end
 
 function ir.neg(reg_z, reg_x)
-  assert(reg_z)
-  assert(reg_x)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
   return { type = 'neg',
            register_z = reg_z,
            register_x = reg_x }
 end
 
 function ir.bnot(reg_z, reg_x)
-  assert(reg_z)
-  assert(reg_x)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
   return { type = 'bnot',
            register_z = reg_z,
            register_x = reg_x }
 end
 
 function ir.lnot(reg_z, reg_x)
-  assert(reg_z)
-  assert(reg_x)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
   return { type = 'lnot',
            register_z = reg_z,
            register_x = reg_x }
 end
 
 function ir.add(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'add',
            register_z = reg_z,
            register_x = reg_x,
@@ -65,9 +77,9 @@ function ir.add(reg_z, reg_x, reg_y)
 end
 
 function ir.sub(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'sub',
            register_z = reg_z,
            register_x = reg_x,
@@ -75,9 +87,9 @@ function ir.sub(reg_z, reg_x, reg_y)
 end
 
 function ir.mul(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'mul',
            register_z = reg_z,
            register_x = reg_x,
@@ -85,9 +97,9 @@ function ir.mul(reg_z, reg_x, reg_y)
 end
 
 function ir.div(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'div',
            register_z = reg_z,
            register_x = reg_x,
@@ -95,9 +107,9 @@ function ir.div(reg_z, reg_x, reg_y)
 end
 
 function ir.eq(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'eq',
            register_z = reg_z,
            register_x = reg_x,
@@ -105,9 +117,9 @@ function ir.eq(reg_z, reg_x, reg_y)
 end
 
 function ir.neq(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'neq',
            register_z = reg_z,
            register_x = reg_x,
@@ -115,9 +127,9 @@ function ir.neq(reg_z, reg_x, reg_y)
 end
 
 function ir.lt(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'lt',
            register_z = reg_z,
            register_x = reg_x,
@@ -125,9 +137,9 @@ function ir.lt(reg_z, reg_x, reg_y)
 end
 
 function ir.gt(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'gt',
            register_z = reg_z,
            register_x = reg_x,
@@ -135,9 +147,9 @@ function ir.gt(reg_z, reg_x, reg_y)
 end
 
 function ir.leq(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'leq',
            register_z = reg_z,
            register_x = reg_x,
@@ -145,28 +157,18 @@ function ir.leq(reg_z, reg_x, reg_y)
 end
 
 function ir.geq(reg_z, reg_x, reg_y)
-  assert(reg_z)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'geq',
            register_z = reg_z,
            register_x = reg_x,
            register_y = reg_y }
 end
 
-function ir.salloc(size)
-  assert(size)
-  return { type = 'salloc', size = size }
-end
-
-function ir.sfree(size)
-  assert(size)
-  return { type = 'sfree', size = size }
-end
-
 function ir.call(return_regs, name, argument_regs)
   assert(return_regs)
-  assert(name)
+  assert(type(name) == 'string')
   assert(argument_regs)
   return { type = 'call',
            argument_regs = deepcopy(argument_regs),
@@ -180,21 +182,21 @@ end
 
 -- Defines a jump label
 function ir.label(name)
-  assert(name)
+  assert(type(name) == 'string')
   return { type = 'label', name = name }
 end
 
 -- Unconditional jump
 function ir.jmp(label_name)
-  assert(label_name)
+  assert(type(label_name) == 'string')
   return { type = 'jmp', label_name = label_name }
 end
 
 -- Jump if equal
 function ir.jeq(label_name, reg_x, reg_y)
-  assert(label_name)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(label_name) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'jeq',
            label_name = label_name,
            register_x = reg_x,
@@ -203,9 +205,9 @@ end
 
 -- Jump if not equal
 function ir.jneq(label_name, reg_x, reg_y)
-  assert(label_name)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(label_name) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'jneq',
            label_name = label_name,
            register_x = reg_x,
@@ -214,8 +216,8 @@ end
 
 -- Jump if zero
 function ir.jz(label_name, reg)
-  assert(label_name)
-  assert(reg)
+  assert(type(label_name) == 'string')
+  assert(type(reg) == 'string')
   return { type = 'jz',
            label_name = label_name,
            register_x = reg }
@@ -223,8 +225,8 @@ end
 
 -- Jump if nonzero
 function ir.jnz(label_name, reg)
-  assert(label_name)
-  assert(reg)
+  assert(type(label_name) == 'string')
+  assert(type(reg) == 'string')
   return { type = 'jnz',
            label_name = label_name,
            register_x = reg }
@@ -232,9 +234,9 @@ end
 
 -- Jump if less than
 function ir.jlt(label_name, reg_x, reg_y)
-  assert(label_name)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(label_name) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'jlt',
            label_name = label_name,
            register_x = reg_x,
@@ -243,9 +245,9 @@ end
 
 -- Jump if greater than
 function ir.jgt(label_name, reg_x, reg_y)
-  assert(label_name)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(label_name) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'jgt',
            label_name = label_name,
            register_x = reg_x,
@@ -254,9 +256,9 @@ end
 
 -- Jump if less than or equal
 function ir.jleq(label_name, reg_x, reg_y)
-  assert(label_name)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(label_name) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'jleq',
            label_name = label_name,
            register_x = reg_x,
@@ -265,23 +267,101 @@ end
 
 -- Jump if greater than or equal
 function ir.jgeq(label_name, reg_x, reg_y)
-  assert(label_name)
-  assert(reg_x)
-  assert(reg_y)
+  assert(type(label_name) == 'string')
+  assert(type(reg_x) == 'string')
+  assert(type(reg_y) == 'string')
   return { type = 'jgeq',
            label_name = label_name,
            register_x = reg_x,
            register_y = reg_y }
 end
 
-function ir.subroutine(args, rets, stmts)
-  assert(args)
-  assert(rets)
-  assert(stmts)
-  return { type = 'subroutine',
-           arguments = deepcopy(args),
-           returns = deepcopy(rets),
-           statements = deepcopy(stmts) }
+function ir.subroutine()
+  local function alloc_temporary(self, count)
+    assert(type(count) == 'number')
+    -- Simply return the next n temporaries
+    local first = self.size_registers
+    local alloc = { type = 'temporary', first = first, count = count }
+    -- Track high-water mark
+    self.size_registers = first + count
+    return alloc
+  end
+  local function alloc_stack(self, offset, size)
+    assert(type(offset) == 'number')
+    assert(type(size) == 'number')
+    -- Return the allocation exactly as specified, so that the compiler may re-use old stack space
+    local alloc = { type = 'stack', offset = offset, size = size }
+    -- Remember this block for use in statements
+    self.locals[#self.locals+1] = alloc
+    -- Track stack's high-water mark
+    if offset + size > self.size_stack then
+      self.size_stack = offset + size
+    end
+    return alloc
+  end
+  local function alloc_argument(self, count)
+    assert(type(count) == 'number')
+    -- Simply return the next n argument registers
+    local first = self.size_arguments
+    local alloc = { type = 'argument', first = first, count = count }
+    -- Track high-water mark
+    self.size_arguments = first + count
+    return alloc
+  end
+  local function alloc_return(self, count)
+    assert(type(count) == 'number')
+    -- Simply return the next n return registers
+    local first = self.size_returns
+    local alloc = { type = 'return', first = first, count = count }
+    -- Track high-water mark
+    self.size_returns = first + count
+    return alloc
+  end
+  local function add_statement(self, stmt)
+    assert(type(stmt) == 'table')
+    self.statements[#self.statements+1] = stmt
+    return stmt
+  end
+  local meta = {
+    __index = {
+      alloc_temporary = alloc_temporary,
+      alloc_stack = alloc_stack,
+      alloc_argument = alloc_argument,
+      alloc_return = alloc_return,
+      add_statement = add_statement,
+    }
+  }
+  local subr = { locals = { },
+                 size_arguments = 0,
+                 size_returns = 0,
+                 size_stack = 0,
+                 size_registers = 0,
+                 statements = { } }
+  return setmetatable(subr, meta)
+end
+
+function ir.stackaddr(reg_z, index)
+  assert(type(reg_z) == 'string')
+  assert(type(index) == 'number')
+  return { type = 'stackaddr',
+           register_z = reg_z,
+           index = index }
+end
+
+function ir.ldr(reg_z, reg_x)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  return { type = 'ldr',
+           register_z = reg_z,
+           register_x = reg_x }
+end
+
+function ir.str(reg_z, reg_x)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  return { type = 'str',
+           register_z = reg_z,
+           register_x = reg_x }
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -415,6 +495,18 @@ function sst.jgeq(stmt)
   return 'if '..stmt.register_x..' >= '..stmt.register_y..' goto '..stmt.label_name
 end
 
+function sst.stackaddr(stmt)
+  return stmt.register_z..' := &(s'..stmt.index..')'
+end
+
+function sst.ldr(stmt)
+  return stmt.register_z..' := *('..stmt.register_x..')'
+end
+
+function sst.str(stmt)
+  return '*('..stmt.register_z..') := '..stmt.register_x
+end
+
 local function stmt_string(stmt)
   local h = sst[stmt.type]
   if h then
@@ -433,21 +525,7 @@ local function dump_statement(stmt)
 end
 
 function ir.dump_subroutine(subr)
-  io.write('sub '..subr.name..' (')
-  for i,arg_type in ipairs(subr.arguments) do
-    io.write(arg_type)
-    if i ~= #subr.arguments then
-      io.write(',')
-    end
-  end
-  io.write(' : ')
-  for i,arg_type in ipairs(subr.returns) do
-    io.write(arg_type)
-    if i ~= #subr.returns then
-      io.write(',')
-    end
-  end
-  io.write(')\n')
+  io.write('sub '..subr.name..' : '..subr.size_arguments..' -> '..subr.size_returns..'\n')
   for i,stmt in ipairs(subr.statements) do
     dump_statement(stmt)
   end

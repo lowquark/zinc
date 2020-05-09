@@ -6,68 +6,6 @@
 local ast = require 'ast'
 local Lexer = require 'Lexer'
 
-----------------------------------------------------------------------------------------------------
--- Parser
-
---[[
-
-Full parser grammar, in extended BNF:
-
-<name-path-rest> := { ':' <name> }
-<name-path> := <name> <name-path-rest>
-
-<expression-p0> := '(' <expression> ')'
-                 | ( '-' | '~' | '!' ) <expression-p0>
-                 | <integer>
-                 | <name-path> [ '(' [ <arguments> ] ')' ]
-<expression-p1> := <expression-p0> { ( '*' | '/' ) <expression-p0> }
-<expression-p2> := <expression-p1> { ( '+' | '-' ) <expression-p1> }
-<expression-p3> := <expression-p2> { ( '<' | '>' | '<=' | '>=' ) <expression-p2> }
-<expression-p4> := <expression-p3> { ( '==' | '!=' ) <expression-p3> }
-<expression-p5> := <expression-p4> { '&&' <expression-p4> }
-<expression-p6> := <expression-p5> { '||' <expression-p5> }
-<expression> := <expression-p6>
-
-<type-specifier> := [ 'const' ] <name-path> [ '&' ]
-
-<arguments> := <expression> { ',' <expression> }
-<argument-declarations> := <type-specifier> <name> { ',' <type-specifier> <name> }
-
-<return-statement> := 'return' [ <arguments> ] ';'
-
-<block> := '{' { <statement> } '}'
-
-<if-body> := 'if' '(' <expression> ')' <block>
-<else-body> := 'else' ( <if-body> [ <else-body> ] | <block> )
-<if-statement> := <if-body> [ <else-body> ]
-
-<function-call> := <name-path> '(' [ <arguments> ] ')'
-
-<lvalue> := <type-specifier> <name> | <name-path>
-<assignment> := <lvalue> { ',' <lvalue> } [ '=' <expression> { ',' <expression> } ] ';'
-
-<statement> := <return-statement>
-             | <block>
-             | <if-statement>
-             | <function-call>
-             | <assignment>
-
-<function-declaration> := 'function' <name> '(' [ <argument-declarations> ] ')'
-                          [ '->' '(' [ <argument-declarations> ] ')' ]
-                          <block>
-<member-declaration> := <name-path> <name> ';'
-<module-body-declaration> := <function-declaration> | <member-declaration>
-<module-declaration> := 'module' <name-path> '{' { <module-body-declaration> } '}'
-
-<access-declaration> := 'access' <name-path> ';'
-<field-declaration> := <name-path> <name> ';'
-<struct-body-declaration> := <access-declaration> | <field-declaration>
-<struct-declaration> := 'struct' <name-path> '{' { <struct-body-declaration> } '}'
-
-<file-scope-declaration> := <struct-declaration> | <module-declaration>
-
-]]
-
 local token_type_strings = {
   [ 'eof' ]       = 'EOF',
   [ 'name' ]      = 'name',
@@ -83,6 +21,8 @@ local token_type_strings = {
   [ 'rcurly' ]    = '`}`',
   [ 'lparen' ]    = '`(`',
   [ 'rparen' ]    = '`)`',
+  [ 'lsquare' ]   = '`[`',
+  [ 'rsquare' ]   = '`]`',
   [ 'integer' ]   = 'integer constant',
   [ 'semicolon' ] = '`;`',
   [ 'dot' ]       = '`.`',
@@ -179,6 +119,24 @@ local function expect_name(L)
   return name
 end
 
+-- Tries to parse an <integer> token
+local function parse_integer(L)
+  if L.next.type == 'integer' then
+    local val = L.next.value
+    L:read()
+    return tonumber(val)
+  end
+end
+
+-- Expects to parse an <integer> token
+local function expect_integer(L)
+  local val = parse_integer(L)
+  if not val then
+    parse_abort_expected(L, 'integer')
+  end
+  return val
+end
+
 -- Tries to parse the rule: <name-path-rest>
 -- Returns the AST object for a name path, using leading_name as the top-level name
 local function parse_name_path_rest(L, leading_name)
@@ -257,13 +215,19 @@ local function parse_type_specifier(L)
   local st = L:state()
   local const = parse_token(L, 'const')
   local name_path = parse_name_path(L)
+  local ref
+  local quantity
   if not name_path then
     -- Not actually a type, boo
     L:reset(st)
     return
   end
-  local ref = parse_token(L, 'binand')
-  return ast.type_specifier(name_path, const, ref)
+  if parse_token(L, 'lsquare') then
+    quantity = parse_integer(L)
+    expect_token(L, 'rsquare')
+  end
+  ref = parse_token(L, 'binand')
+  return ast.type_specifier(name_path, const, ref, quantity)
 end
 
 -- Expects to parse the rule: <type>
@@ -337,23 +301,23 @@ local function parse_expression_p0(L)
   else
     local name_path = parse_name_path(L)
     if name_path then
-      local args
-      -- This might be a function call
       if parse_token(L, 'lparen') then
-        args = parse_argument_list(L)
+        -- Function call
+        local args = parse_argument_list(L)
         expect_token(L, 'rparen')
-      end
-
-      if args then
         return ast.expr_call(name_path, args)
-      else
-        if #name_path == 1 then
-          local name = name_path[1]
-          return ast.expr_variable(name)
-        else
-          error('Invalid variable reference')
-        end
       end
+      local index_exprs
+      while parse_token(L, 'lsquare') do
+        -- Index expression
+        index_exprs = index_exprs or { }
+        index_exprs[#index_exprs + 1] = expect_expression(L)
+        expect_token(L, 'rsquare')
+      end
+      -- Name paths are currently accepted by the parser but they have no meaning
+      if #name_path ~= 1 then error('Absolute variable names are unsupported as of yet.') end
+      local name = name_path[1]
+      return ast.expr_variable(name, index_exprs)
     else
       return nil
     end
@@ -585,11 +549,20 @@ local function parse_lvalue(L)
       return ast.lvalue_declaration(type_spec, name)
     end
   end
-  -- <name-path> 
+  -- <name-path> [ '[' <integer> ']' ]
   L:reset(st)
   local name_path = parse_name_path(L)
   if name_path then
-    return ast.lvalue_reference(name_path, {})
+    local index_exprs
+    while parse_token(L, 'lsquare') do
+      -- Index expression
+      index_exprs = index_exprs or { }
+      index_exprs[#index_exprs + 1] = expect_expression(L)
+      expect_token(L, 'rsquare')
+    end
+    -- Name paths are currently accepted by the parser but they have no meaning
+    if #name_path ~= 1 then error('Absolute variable names are unsupported as of yet.') end
+    return ast.lvalue_reference(name_path, index_exprs)
   end
 end
 

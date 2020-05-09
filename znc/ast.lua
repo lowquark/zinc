@@ -12,11 +12,12 @@ function ast.name_path()
   return { }
 end
 
-function ast.type_specifier(name_path, const, ref)
+function ast.type_specifier(name_path, const, ref, quantity)
   assert(name_path)
   assert(type(const) == 'boolean')
   assert(type(ref) == 'boolean')
-  return { name_path = name_path, const = const, ref = ref }
+  assert(not quantity or type(quantity) == 'number')
+  return { name_path = name_path, const = const, ref = ref, quantity = quantity }
 end
 
 function ast.lvalue_declaration(type_spec, name)
@@ -26,9 +27,9 @@ function ast.lvalue_declaration(type_spec, name)
 end
 
 function ast.lvalue_reference(name_path, index_exprs)
-  assert(name_path)
-  assert(index_exprs)
-  return { type = 'reference', name_path = name_path, index_exprs = index_exprs }
+  assert(type(name_path) == 'table')
+  assert(not index_exprs or type(index_exprs) == 'table')
+  return { type = 'reference', name_path = name_path, index_expressions = index_exprs }
 end
 
 -- Expressions: (The list is long)
@@ -36,9 +37,10 @@ function ast.expr_integer(value)
   assert(value)
   return { type = 'integer', value = value }
 end
-function ast.expr_variable(name)
-  assert(name)
-  return { type = 'variable', name = name }
+function ast.expr_variable(name, index_exprs)
+  assert(type(name) == 'string')
+  assert(not index_exprs or type(index_exprs) == 'table')
+  return { type = 'variable', name = name, index_expressions = index_exprs }
 end
 
 function ast.expr_negate(subexpr)
@@ -252,6 +254,9 @@ local function type_spec_str(type_spec)
     str = str..'const '
   end
   str = str..table.concat(type_spec.name_path, ':')
+  if type_spec.quantity then
+    str = str..' ['..tostring(type_spec.quantity)..']'
+  end
   if type_spec.ref then
     str = str..' &'
   end
@@ -273,11 +278,20 @@ end
 function dump_expr(expr, level)
   local level = level or 0
   local indent = string.rep('  ', level)
+  local indent2 = string.rep('  ', level+1)
   io.write(indent..string.upper(expr.type)..' ')
   if expr.type == 'call' then
     io.write(table.concat(expr.name_path, ':')..'\n')
     for k,arg_expr in ipairs(expr.arguments) do
       dump_expr(arg_expr, level+1)
+    end
+  elseif expr.type == 'variable' then
+    io.write(expr.name..'\n')
+    if expr.index_expressions then
+      for i,idx_expr in ipairs(expr.index_expressions) do
+        io.write(indent2..'INDEX\n')
+        dump_expr(idx_expr, level+2)
+      end
     end
   else
     if expr.value then
