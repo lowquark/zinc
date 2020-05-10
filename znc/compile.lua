@@ -83,11 +83,11 @@ end
 --   ir_subr  : ir.subroutine
 --   -> decl.function
 local function new_function(ctx, name, ast_decl, ir_subr)
-  if ctx.function_scope[name] then
+  if ctx.module_scope[name] then
     report_error('Function `'..name..'` has already been declared in this scope.')
   else
     local new_decl = decl.function_(name, ast_decl, ir_subr)
-    ctx.function_scope[name] = new_decl
+    ctx.module_scope[name] = new_decl
     return new_decl
   end
 end
@@ -133,7 +133,7 @@ end
 --   -> decl.function
 local function find_function(ctx, name_path)
   local name_str = tostring(name_path)
-  local func_decl = ctx.function_scope[name_str]
+  local func_decl = ctx.module_scope[name_str]
   if not func_decl then
     report_error('Function `'..name_str..'` was not found in this scope.')
   end
@@ -204,9 +204,10 @@ end
 function put_call(ctx, name_path, argument_exprs, return_regs)
   return_regs = return_regs or { }
   -- Find the function in question
-  local target_subr = find_function(ctx, name_path).ir_subroutine
+  local func_decl = find_function(ctx, name_path)
+  local target_subr = func_decl.ir_subroutine
   -- Validate the function call
-  if #argument_exprs ~= target_subr.size_arguments then
+  if #argument_exprs ~= #func_decl.ast_function.arguments then
     report_error('Wrong number of arguments for call to '..name_path..'(...)')
   end
   if #return_regs > target_subr.size_returns then
@@ -224,7 +225,7 @@ function put_call(ctx, name_path, argument_exprs, return_regs)
     argument_regs[k] = put_expression(ctx, ast_expr)
   end
   -- Actually emit call instruction
-  emit(ctx, ir.call(return_regs, table.concat(name_path, '$'), argument_regs))
+  emit(ctx, ir.call(return_regs, target_subr.name, argument_regs))
 end
 
 -- Generates IR code which computes a simple unary arithmetic expression
@@ -257,10 +258,11 @@ function put_lvalue_expression(ctx, var_decl, lvalue_ast)
   end
   -- Get the address, offset, and write.
   local reg_idx = put_expression(ctx, lvalue_ast.index_expressions[1])
+  local reg_offs = new_temp_reg(ctx)
   local reg_ptr = new_temp_reg(ctx)
-  local reg_z = new_temp_reg(ctx)
-  emit(ctx, ir.stackaddr(reg_ptr, var_decl.ir_alloc.offset))
-  emit(ctx, ir.add(reg_ptr, reg_ptr, reg_idx))
+  emit(ctx, ir.stackaddr(reg_ptr, var_decl.ir_alloc.id))
+  emit(ctx, ir.mul(reg_offs, reg_idx, '8'))
+  emit(ctx, ir.add(reg_ptr, reg_ptr, reg_offs))
   return reg_ptr
 end
 
@@ -598,10 +600,9 @@ function pst.call(ctx, ast_stmt)
 end
 
 local function put_function(ctx, ast_func)
-  -- Create a new IR subroutine for this function (we will continue to modify it)
-  local ir_subr = ir.subroutine(ast_func.name)
-  table.insert(ctx.subroutines, ir_subr)
-  -- Save this function in the current module scope
+  -- Create a new IR subroutine for this function (we will continue to build it)
+  local ir_subr = ctx.program:add_subroutine('z$'..ast_func.name)
+  -- Declare function in the current module scope
   local func_decl = new_function(ctx, ast_func.name, ast_func, ir_subr)
   -- Allocate argument registers and populate initial local scope
   local local_scope = { }
@@ -631,15 +632,11 @@ local function put_function(ctx, ast_func)
 end
 
 local function compile(ast)
+  local ctx = { }
+  -- Map from absolute function names to declarations
+  ctx.module_scope = { }
   -- Final object representing all compiled code
-  local ir = {}
-  ir.subroutines = {}
-  -- Compiler context
-  local ctx = {
-    -- Map from absolute function names to declarations
-    function_scope = { },
-    subroutines = ir.subroutines,
-  }
+  ctx.program = ir.program()
   -- Find each function and compile it into a subroutine
   for i,ast_fdecl in ipairs(ast) do
     if ast_fdecl.type == 'module' then
@@ -651,7 +648,7 @@ local function compile(ast)
       end
     end
   end
-  return ir
+  return ctx.program
 end
 
 return compile

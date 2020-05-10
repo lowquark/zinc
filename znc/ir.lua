@@ -16,22 +16,45 @@ local function deepcopy(t)
 end
 
 ----------------------------------------------------------------------------------------------------
--- Program construction
+-- Statement construction
 
 -- Unless otherwise specified, table arguments are copied
 
 local ir = {}
 
+function ir.literal(num)
+  assert(type(num) == 'number')
+  return num
+end
+
 function ir.tempreg(index)
+  assert(type(index) == 'number')
   return 'r'..index
 end
 
 function ir.argreg(index)
+  assert(type(index) == 'number')
   return 'a'..index
 end
 
 function ir.retreg(index)
+  assert(type(index) == 'number')
   return 'b'..index
+end
+
+function ir.istempreg(reg)
+  assert(type(reg) == 'string')
+  return reg:sub(1,1) == 'r'
+end
+
+function ir.isargreg(reg)
+  assert(type(reg) == 'string')
+  return reg:sub(1,1) == 'a'
+end
+
+function ir.isretreg(reg)
+  assert(type(reg) == 'string')
+  return reg:sub(1,1) == 'b'
 end
 
 function ir.mov(reg_z, reg_x)
@@ -166,14 +189,30 @@ function ir.geq(reg_z, reg_x, reg_y)
            register_y = reg_y }
 end
 
+function ir.ldr(reg_z, reg_x)
+  assert(type(reg_z) == 'string')
+  assert(type(reg_x) == 'string')
+  return { type = 'ldr',
+           register_z = reg_z,
+           register_x = reg_x }
+end
+
+function ir.str(reg_w, reg_x)
+  assert(type(reg_w) == 'string')
+  assert(type(reg_x) == 'string')
+  return { type = 'str',
+           register_w = reg_w,
+           register_x = reg_x }
+end
+
 function ir.call(return_regs, name, argument_regs)
-  assert(return_regs)
+  assert(type(return_regs) == 'table')
   assert(type(name) == 'string')
-  assert(argument_regs)
+  assert(type(argument_regs) == 'table')
   return { type = 'call',
-           argument_regs = deepcopy(argument_regs),
+           return_regs = deepcopy(return_regs),
            name = name,
-           return_regs = deepcopy(return_regs) }
+           argument_regs = deepcopy(argument_regs) }
 end
 
 function ir.ret()
@@ -276,72 +315,6 @@ function ir.jgeq(label_name, reg_x, reg_y)
            register_y = reg_y }
 end
 
-function ir.subroutine(name)
-  -- XXX All of these metatables are different! lol
-  local function alloc_temporary(self, count)
-    assert(type(count) == 'number')
-    -- Simply return the next n temporaries
-    local first = self.size_registers
-    local alloc = { type = 'temporary', first = first, count = count }
-    -- Track high-water mark
-    self.size_registers = first + count
-    return alloc
-  end
-  local function alloc_stack(self, offset, size)
-    assert(type(offset) == 'number')
-    assert(type(size) == 'number')
-    -- Return the allocation exactly as specified, so that the compiler may re-use old stack space
-    local alloc = { type = 'stack', offset = offset, size = size }
-    -- Remember this block for use in statements
-    self.locals[#self.locals+1] = alloc
-    -- Track stack's high-water mark
-    if offset + size > self.size_stack then
-      self.size_stack = offset + size
-    end
-    return alloc
-  end
-  local function alloc_argument(self, count)
-    assert(type(count) == 'number')
-    -- Simply return the next n argument registers
-    local first = self.size_arguments
-    local alloc = { type = 'argument', first = first, count = count }
-    -- Track high-water mark
-    self.size_arguments = first + count
-    return alloc
-  end
-  local function alloc_return(self, count)
-    assert(type(count) == 'number')
-    -- Simply return the next n return registers
-    local first = self.size_returns
-    local alloc = { type = 'return', first = first, count = count }
-    -- Track high-water mark
-    self.size_returns = first + count
-    return alloc
-  end
-  local function add_statement(self, stmt)
-    assert(type(stmt) == 'table')
-    self.statements[#self.statements+1] = stmt
-    return stmt
-  end
-  local meta = {
-    __index = {
-      alloc_temporary = alloc_temporary,
-      alloc_stack = alloc_stack,
-      alloc_argument = alloc_argument,
-      alloc_return = alloc_return,
-      add_statement = add_statement,
-    }
-  }
-  local subr = { name = name,
-                 locals = { },
-                 size_arguments = 0,
-                 size_returns = 0,
-                 size_stack = 0,
-                 size_registers = 0,
-                 statements = { } }
-  return setmetatable(subr, meta)
-end
-
 function ir.stackaddr(reg_z, index)
   assert(type(reg_z) == 'string')
   assert(type(index) == 'number')
@@ -350,24 +323,97 @@ function ir.stackaddr(reg_z, index)
            index = index }
 end
 
-function ir.ldr(reg_z, reg_x)
-  assert(type(reg_z) == 'string')
-  assert(type(reg_x) == 'string')
-  return { type = 'ldr',
-           register_z = reg_z,
-           register_x = reg_x }
+----------------------------------------------------------------------------------------------------
+-- ir.subroutine - Subroutine definition and builder
+
+local subroutine_methods = { }
+local subroutine_meta = { __index = subroutine_methods }
+
+function subroutine_methods.alloc_temporary(self, count)
+  assert(type(count) == 'number')
+  -- Simply return the next n temporaries
+  local first = self.size_registers
+  local alloc = { type = 'temporary', first = first, count = count }
+  -- Track high-water mark
+  self.size_registers = first + count
+  return alloc
 end
 
-function ir.str(reg_z, reg_x)
-  assert(type(reg_z) == 'string')
-  assert(type(reg_x) == 'string')
-  return { type = 'str',
-           register_z = reg_z,
-           register_x = reg_x }
+function subroutine_methods.alloc_stack(self, offset, size)
+  assert(type(offset) == 'number')
+  assert(type(size) == 'number')
+  -- Return the allocation exactly as specified, so that the compiler may re-use old stack space
+  local alloc = { type = 'stack', id = #self.locals + 1, offset = offset, size = size }
+  -- Remember this block for use in statements
+  self.locals[#self.locals+1] = alloc
+  -- Track stack's high-water mark
+  if offset + size > self.size_stack then
+    self.size_stack = offset + size
+  end
+  return alloc
 end
+
+function subroutine_methods.alloc_argument(self, count)
+  assert(type(count) == 'number')
+  -- Simply return the next n argument registers
+  local first = self.size_arguments
+  local alloc = { type = 'argument', first = first, count = count }
+  -- Track high-water mark
+  self.size_arguments = first + count
+  return alloc
+end
+
+function subroutine_methods.alloc_return(self, count)
+  assert(type(count) == 'number')
+  -- Simply return the next n return registers
+  local first = self.size_returns
+  local alloc = { type = 'return', first = first, count = count }
+  -- Track high-water mark
+  self.size_returns = first + count
+  return alloc
+end
+
+function subroutine_methods.add_statement(self, stmt)
+  assert(type(stmt) == 'table')
+  self.statements[#self.statements+1] = stmt
+  return stmt
+end
+
+local function subroutine_new(name)
+  assert(type(name) == 'string')
+  local subr = { name = name,
+                 locals = { },
+                 size_arguments = 0,
+                 size_returns = 0,
+                 size_stack = 0,
+                 size_registers = 0,
+                 statements = { } }
+  return setmetatable(subr, subroutine_meta)
+end
+
+ir.subroutine = subroutine_new
 
 ----------------------------------------------------------------------------------------------------
--- Pretty printing
+-- ir.program - Program definition and builder
+
+local program_methods = { }
+local program_meta = { __index = program_methods }
+
+function program_methods.add_subroutine(self, name)
+  local ir_subr = subroutine_new(name)
+  table.insert(self.subroutines, ir_subr)
+  return ir_subr
+end
+
+local function program_new()
+  local prog = { subroutines = { } }
+  return setmetatable(prog, program_meta)
+end
+
+ir.program = program_new
+
+----------------------------------------------------------------------------------------------------
+-- Pretty printing - Statement to string conversion
 
 -- (s)atement (s)tring (t)able
 local sst = {}
@@ -506,7 +552,7 @@ function sst.ldr(stmt)
 end
 
 function sst.str(stmt)
-  return '*('..stmt.register_z..') := '..stmt.register_x
+  return '*('..stmt.register_w..') := '..stmt.register_x
 end
 
 local function stmt_string(stmt)
@@ -517,6 +563,9 @@ local function stmt_string(stmt)
     error('Unknown IR statement type `'..tostring(stmt.type)..'`')
   end
 end
+
+----------------------------------------------------------------------------------------------------
+-- Pretty printing - Dumping to io.output
 
 local function dump_statement(stmt)
   if stmt.type == 'label' then
@@ -533,7 +582,7 @@ function ir.dump_subroutine(subr)
   end
 end
 
--- Pretty-prints the given IR program object to io.output
+-- Pretty-prints the given ir.program object to io.output
 function ir.dump(ir_prog)
   for i,subr in ipairs(ir_prog.subroutines) do
     ir.dump_subroutine(subr)

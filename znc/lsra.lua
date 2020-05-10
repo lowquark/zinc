@@ -4,20 +4,41 @@
 -- web.cs.ucla.edu/~palsberg/course/cs132/linearscan.pdf
 ----------------------------------------------------------------------------------------------------
 
--- Computes the required size of the stack register file for the given subroutine
-local function compute_stack_size(subr)
-  local max = 0
+local ir = require 'ir'
+
+local function rename_registers(subr, mapping)
+  -- Reindex everything according to remapped registers
   for k,ir_stmt in ipairs(subr.statements) do
+    local new_reg
+    if ir_stmt.register_x then
+      new_reg = mapping[ir_stmt.register_x]
+      if new_reg then ir_stmt.register_x = new_reg end
+    end
+    if ir_stmt.register_y then
+      new_reg = mapping[ir_stmt.register_y]
+      if new_reg then ir_stmt.register_y = new_reg end
+    end
     if ir_stmt.register_z then
-      local index = tonumber(string.match(ir_stmt.register_z, 's(%d+)'))
-      if index then
-        if index > max then
-          max = index
-        end
+      new_reg = mapping[ir_stmt.register_z]
+      if new_reg then ir_stmt.register_z = new_reg end
+    end
+    if ir_stmt.register_w then
+      new_reg = mapping[ir_stmt.register_w]
+      if new_reg then ir_stmt.register_w = new_reg end
+    end
+    if ir_stmt.argument_regs then
+      for i,reg in ipairs(ir_stmt.argument_regs) do
+        new_reg = mapping[reg]
+        if new_reg then ir_stmt.argument_regs[i] = new_reg end
+      end
+    end
+    if ir_stmt.return_regs then
+      for i,reg in ipairs(ir_stmt.return_regs) do
+        new_reg = mapping[reg]
+        if new_reg then ir_stmt.return_regs[i] = new_reg end
       end
     end
   end
-  return max
 end
 
 -- Computes the maximum lifetime interval for the temporary registers used by the given subroutine
@@ -25,52 +46,59 @@ end
 local function max_lifetimes(subr)
   local start_idx = { }
   local end_idx = { }
+  local regs_by_start = {}
   local lifetimes = { }
   local n = #subr.statements
-  local regs_by_start = {}
   -- Search forward to find first definition of each temporary register
   for k=1,n do
     local ir_stmt = subr.statements[k]
-    local reg_z = ir_stmt.register_z
-    if reg_z then
-      if not start_idx[reg_z] and reg_z:sub(1,1) == 'r' then
-        start_idx[reg_z] = k
-        regs_by_start[#regs_by_start+1] = reg_z
-      end
-    end
     if ir_stmt.return_regs then
+      -- This statement overwrites multiple registers
       for i,reg in ipairs(ir_stmt.return_regs) do
-        if not start_idx[reg] and reg:sub(1,1) == 'r' then
+        if not start_idx[reg] and ir.istempreg(reg) then
           start_idx[reg] = k
           regs_by_start[#regs_by_start+1] = reg
         end
+      end
+    elseif ir_stmt.register_z then
+      -- This statement only overwrites a single register
+      local reg_z = ir_stmt.register_z
+      if not start_idx[reg_z] and ir.istempreg(reg_z) then
+        start_idx[reg_z] = k
+        regs_by_start[#regs_by_start+1] = reg_z
       end
     end
   end
   -- Search backward to find last reference to each temporary register
   for k=n,1,-1 do
     local ir_stmt = subr.statements[k]
+    local reg_w = ir_stmt.register_w
     local reg_x = ir_stmt.register_x
     local reg_y = ir_stmt.register_y
+    if reg_w then
+      if not end_idx[reg_w] and ir.istempreg(reg_w) then
+        end_idx[reg_w] = k
+      end
+    end
     if reg_x then
-      if not end_idx[reg_x] and reg_x:sub(1,1) == 'r' then
+      if not end_idx[reg_x] and ir.istempreg(reg_x) then
         end_idx[reg_x] = k
       end
     end
     if reg_y then
-      if not end_idx[reg_y] and reg_y:sub(1,1) == 'r' then
+      if not end_idx[reg_y] and ir.istempreg(reg_y) then
         end_idx[reg_y] = k
       end
     end
     if ir_stmt.argument_regs then
       for i,reg in ipairs(ir_stmt.argument_regs) do
-        if not end_idx[reg] and reg:sub(1,1) == 'r' then
+        if not end_idx[reg] and ir.istempreg(reg) then
           end_idx[reg] = k
         end
       end
     end
   end
-  -- Fill in missing start/ends, for sake of correctness
+  -- Fill in missing starts/ends, for sake of correctness.
   for reg,k in pairs(start_idx) do
     if not end_idx[reg] then
       end_idx[reg] = n
@@ -82,11 +110,11 @@ local function max_lifetimes(subr)
       table.insert(regs_by_start, 1, reg)
     end
   end
-  -- Create list of intervals for each register
+  -- Create list of intervals for each register.
   for i,reg in ipairs(regs_by_start) do
     local k_begin = start_idx[reg]
     local k_end = end_idx[reg]
-    -- Iterating in order of start index, so just append
+    -- We're iterating in order of start index, so just append.
     lifetimes[#lifetimes+1] = { reg = reg, k_begin = k_begin, k_end = k_end }
   end
   return lifetimes
@@ -139,30 +167,31 @@ local function insert_interval(active, interval)
   active[n+1] = interval
 end
 
--- Converts the given subroutine into one which only uses the given number of temporary registers
+-- Converts the given subroutine into one which heavily prioritizes the first `num_target_regs`
+-- registers.
 local function lsra(subr, num_target_regs)
-  -- Compute coarse lifetime intervals of each register
+  -- Compute coarse lifetime intervals of each register.
   local lifetimes = max_lifetimes(subr)
   for k,interval in ipairs(lifetimes) do
     io.write(interval.reg..' is live on ['..interval.k_begin..', '..interval.k_end..')\n')
   end
-  -- List of live variables/intervals, in order of increasing k_end
+  -- List of live variables/intervals, kept in order of increasing `k_end`.
   local active = { }
-  -- Generate list of free "hardware" registers
+  -- Initialize list of free "hardware" registers.
   local free_regs = { }
   for k=1,num_target_regs do
-    free_regs[k] = 'r'..(k-1)
+    free_regs[k] = ir.tempreg(k-1)
   end
-  -- Compute stack index for the next spilled register, chosen to avoid existing stack indices
-  local spill_index = compute_stack_size(subr)
+  -- Stack index for the next spilled register
+  local spill_index = num_target_regs
   -- Main loop
   for k,interval_i in ipairs(lifetimes) do
+    -- Remove intervals which have ended before this one starts
     expire_old(active, free_regs, interval_i.k_begin)
     if #free_regs == 0 then
-      -- There's no free hardware registers, so we have to spill to the stack. With explicit scoping
-      -- information, it would be possible to spill to unused stack space, but for now we spill to
-      -- fresh stack space.
-      local new_stack_reg = 's'..spill_index
+      -- There's no free hardware registers, so we have to spill to the stack. We do this by
+      -- allocating a temporary register that is greater than or equal to `num_target_regs`
+      local new_stack_reg = ir.tempreg(spill_index)
       spill_index = spill_index + 1
       -- If the last active interval ends later than this one does, spill it to the stack and steal
       -- its register. Otherwise, spill this one to the stack. Hence, this interval has register
@@ -181,9 +210,8 @@ local function lsra(subr, num_target_regs)
         interval_i.target_reg = new_stack_reg
       end
     else
-      local new_true_reg = table.remove(free_regs, 1)
-      local ir_reg = interval_i.reg
-      interval_i.target_reg = new_true_reg
+      -- Take free hardware register and add current interval to active set
+      interval_i.target_reg = table.remove(free_regs, 1)
       insert_interval(active, interval_i)
     end
   end
@@ -193,38 +221,10 @@ local function lsra(subr, num_target_regs)
     mapping[interval.reg] = interval.target_reg
     io.write('map '..interval.reg..' -> '..interval.target_reg..'\n')
   end
-  -- Reindex everything according to remapped registers
-  for k,ir_stmt in ipairs(subr.statements) do
-    local new_reg
-    if ir_stmt.register_x then
-      new_reg = mapping[ir_stmt.register_x]
-      if new_reg then ir_stmt.register_x = new_reg end
-    end
-    if ir_stmt.register_y then
-      new_reg = mapping[ir_stmt.register_y]
-      if new_reg then ir_stmt.register_y = new_reg end
-    end
-    if ir_stmt.register_z then
-      new_reg = mapping[ir_stmt.register_z]
-      if new_reg then ir_stmt.register_z = new_reg end
-    end
-    if ir_stmt.argument_regs then
-      for i,reg in ipairs(ir_stmt.argument_regs) do
-        new_reg = mapping[reg]
-        if new_reg then ir_stmt.argument_regs[i] = new_reg end
-      end
-    end
-    if ir_stmt.return_regs then
-      for i,reg in ipairs(ir_stmt.return_regs) do
-        new_reg = mapping[reg]
-        if new_reg then ir_stmt.return_regs[i] = new_reg end
-      end
-    end
-  end
-  -- Update metadata
-  subr.stack_size = spill_index
-  subr.register_size = num_target_regs
-  subr.input_size = math.max(subr.size_arguments, subr.size_returns)
+  -- Perform mapping
+  rename_registers(subr, mapping)
+  -- Minimum size of register file may have decreased
+  subr.size_registers = spill_index
 end
 
 return lsra

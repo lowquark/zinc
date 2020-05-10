@@ -83,33 +83,36 @@ local emit_stmt = {}
 local function operand(ctx, ir_name)
   local typestr = string.sub(ir_name, 1, 1)
   if typestr == 'r' then
-    -- Temporary access
+    -- Regular register
     local index = tonumber(string.match(ir_name, 'r(%d+)'))
     if not index then
       error('Invalid IR temporary register `'..ir_name..'`')
     end
-    local op = otrt[index+1]
-    if op then
-      return op, 'register'
+    if index < #otrt then
+      -- Use hardware register
+      return otrt[index+1], 'register'
     else
-      error('No hardware register available for '..ir_name)
+      -- Use stack "register"
+      local rbp_offset_bytes = -8*(index - #otrt + 1)
+      return rbp_offset_bytes..'(%rbp)', 'memory'
     end
-  elseif typestr == 's' then
-    -- Stack access
-    local index = tonumber(string.match(ir_name, 's(%d+)'))
+  elseif typestr == 'a' then
+    -- Argument register
+    local index = tonumber(string.match(ir_name, 'a(%d+)'))
     if not index then
-      error('Invalid IR stack register `'..ir_name..'`')
+      error('Invalid IR argument register `'..ir_name..'`')
     end
-    local stack_offset = -8*(index + 1)
-    return stack_offset..'(%rbp)', 'memory'
-  elseif typestr == 'i' then
-    -- Call input access
-    local index = tonumber(string.match(ir_name, 'i(%d+)'))
+    local rbp_offset_bytes = 8*(ctx.subroutine.size_arguments - index + 1)
+    return rbp_offset_bytes..'(%rbp)', 'memory'
+  elseif typestr == 'b' then
+    -- Return value register
+    local index = tonumber(string.match(ir_name, 'b(%d+)'))
     if not index then
-      error('Invalid IR input/output register `'..ir_name..'`')
+      error('Invalid IR return register `'..ir_name..'`')
     end
-    local stack_offset = 8*(ctx.subroutine.input_size - index + 1)
-    return stack_offset..'(%rbp)', 'memory'
+    local size_io = ctx.subroutine.size_arguments + ctx.subroutine.size_returns
+    local rbp_offset_bytes = 8*(size_io - index + 1)
+    return rbp_offset_bytes..'(%rbp)', 'memory'
   else
     local integer = tonumber(ir_name)
     if integer then
@@ -426,6 +429,18 @@ function emit_stmt.geq(ctx, ir_stmt)
   emit_stmt_comparison_set(ctx, ir_stmt, 'setge')
 end
 
+function emit_stmt.str(ctx, ir_stmt)
+  local op_w, type_w = operand(ctx, ir_stmt.register_w)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  emit(ctx, 'mov '..op_x..', ('..op_w..')')
+end
+
+function emit_stmt.ldr(ctx, ir_stmt)
+  local op_z, type_z = operand(ctx, ir_stmt.register_z)
+  local op_x, type_x = operand(ctx, ir_stmt.register_x)
+  emit(ctx, 'mov ('..op_x..'), '..op_z)
+end
+
 function emit_stmt.call(ctx, ir_stmt)
   local return_ops = { }
   local return_types = { }
@@ -452,23 +467,29 @@ function emit_stmt.call(ctx, ir_stmt)
     end
   end
   local arg_stack_idx = ctx.stack_index
-  local input_size = math.max(#ir_stmt.return_regs, #ir_stmt.argument_regs)
-  -- Allocate stack argument space
-  emit_stack_alloc(ctx, input_size)
+  local input_size = #ir_stmt.return_regs + #ir_stmt.argument_regs
+  if input_size > 0 then
+    -- Allocate stack argument space
+    emit_stack_alloc(ctx, input_size)
+  end
   -- Push arguments
   for i=1,#argument_ops do
-    emit_mov(ctx, argument_ops[i], argument_types[i], (-8*(arg_stack_idx+i))..'(%rbp)', 'memory')
+    local rbp_offset_bytes = -8*(arg_stack_idx + i + #ir_stmt.return_regs)
+    emit_mov(ctx, argument_ops[i], argument_types[i], rbp_offset_bytes..'(%rbp)', 'memory')
   end
   -- Emit actual call
   emit(ctx, 'call '..ir_stmt.name)
   -- Grab return values
   for i=1,#ir_stmt.return_regs do
     if return_ops[i] then
-      emit_mov(ctx, (-8*(arg_stack_idx+i))..'(%rbp)', 'memory', return_ops[i], return_types[i])
+      local rbp_offset_bytes = -8*(arg_stack_idx + i)
+      emit_mov(ctx, rbp_offset_bytes..'(%rbp)', 'memory', return_ops[i], return_types[i])
     end
   end
-  -- Deallocate stack argument space
-  emit_stack_dealloc(ctx, input_size)
+  if input_size > 0 then
+    -- Deallocate stack argument space
+    emit_stack_dealloc(ctx, input_size)
+  end
   -- Restore all previously pushed registers
   for i=#saved_regs,1,-1 do
     emit_pop(ctx, saved_regs[i], 'register')
@@ -522,26 +543,23 @@ end
 function emit_stmt.stackaddr(ctx, ir_stmt)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   assert(type_z ~= 'literal', 'Invalid instruction')
+  local num_spills = ctx.subroutine.size_registers - #otrt
+  local ir_alloc = ctx.subroutine.locals[ir_stmt.index]
+  local rbp_offset_bytes = -8*(num_spills + ir_alloc.offset + ir_alloc.size)
   if type_z == 'register' then
     emit(ctx, 'movq %rbp, '..op_z)
-    emit(ctx, 'addq '..-8*(ir_stmt.index + 1)..', '..op_z)
+    emit(ctx, 'addq $'..rbp_offset_bytes..', '..op_z)
   else
     emit(ctx, 'movq %rbp, %rax')
-    emit(ctx, 'addq '..-8*(ir_stmt.index + 1)..', %rax')
+    emit(ctx, 'addq $'..rbp_offset_bytes..', %rax')
     emit(ctx, 'movq %rax, '..op_z)
   end
 end
 
-function emit_stmt.ldr(ctx, ir_stmt)
-  local op_x, type_x = operand(ctx, ir_stmt.register_x)
-  local op_z, type_z = operand(ctx, ir_stmt.register_z)
-  assert(type_z ~= 'literal', 'Invalid instruction')
-  emit(ctx, 'movq ('..op_x..'), '..op_z)
-end
-
 local function emit_subroutine(ctx, ir_subr)
+  local num_spills = ir_subr.size_registers - #otrt
   -- Initialize context
-  ctx.stack_index = 0
+  ctx.stack_index = num_spills
   ctx.subroutine = ir_subr
   -- Emit header
   emit(ctx, '.globl '..ir_subr.name)
@@ -549,8 +567,8 @@ local function emit_subroutine(ctx, ir_subr)
   emit_label(ctx, ir_subr.name)
   emit_prologue(ctx)
   -- Reserve stack space for this function (part of the prologue, really)
-  if ir_subr.stack_size then
-    emit_stack_alloc(ctx, ir_subr.stack_size)
+  if ir_subr.size_stack > 0 then
+    emit_stack_alloc(ctx, num_spills + ir_subr.size_stack)
   end
   -- Emit statements
   for i,ir_stmt in ipairs(ir_subr.statements) do
@@ -591,7 +609,7 @@ local function generate(ir_prog, outfile)
   emit(ctx, 'mov  %rsp, %rbp')
   emit(ctx, 'sub  $8, %rsp')
   -- TODO: The module containing main needs to be specified as a compiler argument
-  emit(ctx, 'call my_module$main')
+  emit(ctx, 'call z$main')
   emit(ctx, 'mov  -8(%rbp), %rax')
   emit(ctx, 'add  $8, %rsp')
   emit(ctx, 'mov  %rbp, %rsp')
