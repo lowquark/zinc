@@ -24,7 +24,7 @@ local ir = {}
 
 function ir.literal(num)
   assert(type(num) == 'number')
-  return num
+  return tostring(num)
 end
 
 function ir.tempreg(index)
@@ -329,11 +329,11 @@ end
 local subroutine_methods = { }
 local subroutine_meta = { __index = subroutine_methods }
 
-function subroutine_methods.alloc_temporary(self, count)
+function subroutine_methods.alloc_register(self, count)
   assert(type(count) == 'number')
   -- Simply return the next n temporaries
   local first = self.size_registers
-  local alloc = { type = 'temporary', first = first, count = count }
+  local alloc = { type = 'register', first = first, count = count }
   -- Track high-water mark
   self.size_registers = first + count
   return alloc
@@ -395,6 +395,7 @@ ir.subroutine = subroutine_new
 
 ----------------------------------------------------------------------------------------------------
 -- ir.program - Program definition and builder
+-- TODO: I think builder should be separate
 
 local program_methods = { }
 local program_meta = { __index = program_methods }

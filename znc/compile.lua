@@ -6,26 +6,91 @@
 local ir = require 'ir'
 local pprint = require 'pprint'
 
+local function deepcopy(t)
+  r = { }
+  for k,v in pairs(t) do
+    if v.type == 'table' then
+      r[k] = deepcopy(v)
+    else
+      r[k] = v
+    end
+  end
+  return r
+end
+
 ----------------------------------------------------------------------------------------------------
 -- Language declarations
 
-local decl = { }
+local lang = { }
 
-function decl.variable(name, type_spec, ir_alloc)
-  assert(type(name) == 'string')
-  assert(type(type_spec) == 'table')
-  assert(type(ir_alloc) == 'table')
-  return { type = 'local', type_specifier = type_spec, name = name, ir_alloc = ir_alloc }
+----------------------------------------------------------------------------------------------------
+-- lang.variable
+
+function lang.variable(name, variable_type, allocation)
+  assert(name == nil or type(name) == 'string')
+  assert(type(variable_type) == 'table')
+  assert(type(allocation) == 'table')
+  return { type = 'local',
+           name = name,
+           variable_type = variable_type,
+           allocation = allocation }
 end
 
--- `name_path` must be absolute.
-function decl.function_(name, ast_func, ir_subr)
+----------------------------------------------------------------------------------------------------
+-- lang.function_
+
+function lang.function_(name, ast_func, ir_subr)
   assert(type(name) == 'string')
   assert(type(ast_func) == 'table')
   assert(type(ir_subr) == 'table')
   return { name = name,
            ast_function = ast_func,
            ir_subroutine = ir_subr }
+end
+
+----------------------------------------------------------------------------------------------------
+-- lang.type
+
+lang.type_int8 = { type = 'primitive', ptype = 'int8' }
+lang.type_int16 = { type = 'primitive', ptype = 'int16' }
+lang.type_int32 = { type = 'primitive', ptype = 'int32' }
+lang.type_int64 = { type = 'primitive', ptype = 'int64' }
+
+function lang.type_struct(size, atomic, complex, fields, access_list)
+  assert(type(size) == 'number')
+  assert(type(atomic) == 'boolean')
+  assert(type(complex) == 'boolean')
+  assert(type(fields) == 'table')
+  assert(type(access_list) == 'table')
+  return { type = 'struct',
+           atomic = atomic,
+           complex = complex,
+           fields = deepcopy(fields),
+           access_list = deepcopy(access_list) }
+end
+
+function lang.type_array(value_type, size)
+  assert(type(value_type) == 'table')
+  assert(type(size) == 'number')
+  return { type = 'array',
+           value_type = value_type,
+           size = size }
+end
+
+function lang.type_reference(value_type)
+  assert(type(value_type) == 'table')
+  return { type = 'reference',
+           value_type = value_type }
+end
+
+----------------------------------------------------------------------------------------------------
+-- lang.struct_field
+
+function lang.struct_field(field_name, field_type)
+  assert(type(field_name) == 'string')
+  assert(type(field_type) == 'table')
+  return { name = field_name,
+           type = field_type }
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -56,6 +121,9 @@ local function copy_scope(scope)
   return new_scope
 end
 
+----------------------------------------------------------------------------------------------------
+-- Allocations
+
 -- Returns a subroutine-unique label
 local function new_label(ctx)
   local idx = ctx.label_index
@@ -64,6 +132,7 @@ local function new_label(ctx)
 end
 
 -- Stack storage is allocated via simple stacking
+-- TODO: Re-implement unstacking at end of block scope (why was that removed?)
 local function alloc_stack_space(ctx, size)
   local idx = ctx.stack_index
   ctx.stack_index = ctx.stack_index + size
@@ -72,8 +141,88 @@ end
 
 -- Conveniently allocates a single temporary register
 local function new_temp_reg(ctx)
-  local ir_alloc = ctx.subroutine:alloc_temporary(1)
-  return ir.tempreg(ir_alloc.first)
+  local allocation = ctx.subroutine:alloc_register(1)
+  return ir.tempreg(allocation.first)
+end
+
+local function find_type(ctx, name_path)
+  if type(name_path) == 'table' then
+    if #name_path == 1 and name_path[1] == 'int64' then
+      return lang.type_int64
+    end
+    report_error('Unknown type `'..name_path..'`.')
+  elseif type(name_path) == 'string' then
+    if name_path == 'int64' then
+      return lang.type_int64
+    end
+    report_error('Unknown type `'..name_path..'`.')
+  else
+    error('')
+  end
+end
+
+local function compute_type(ctx, ast_type_spec)
+  local t = find_type(ctx, ast_type_spec.name_path)
+  if ast_type_spec.const then
+    -- Wrap type in const
+    t = lang.type_const(t)
+  end
+  if ast_type_spec.quantity then
+    -- Wrap type in array
+    t = lang.type_array(t, ast_type_spec.quantity)
+  end
+  if ast_type_spec.ref then
+    -- Wrap type in reference
+    t = lang.type_reference(t)
+  end
+  return t
+end
+
+local function allocate_local(ctx, lang_type)
+  if lang_type.type == 'array' then
+    -- Allocate according to the array's value type
+    -- TODO: Actually do this
+    local val_type = lang_type.value_type
+    if not (val_type.type and val_type.ptype == 'int64') then
+      report_error('Array value types other than int64 are unsupported.')
+    end
+    local size_quadwords = lang_type.size * 1 -- sizeof(int64) in quadwords
+    local offset, size = alloc_stack_space(ctx, size_quadwords)
+    -- Allocate a new block of stack space
+    return ctx.subroutine:alloc_stack(offset, size)
+  else
+    -- Allocate a new temporary register to this variable
+    local size_quadwords = 1
+    return ctx.subroutine:alloc_register(size_quadwords)
+  end
+end
+
+-- Attempts to create a new local variable in the current scope
+--   ctx       : Compiler context
+--   name      : string
+--   lang_type : lang.type
+--   -> lang.variable
+local function new_local_variable(ctx, name, lang_type)
+  if ctx.local_scope[name] then
+    report_error('`'..name..'` was already declared in this scope.')
+  else
+    -- Allocate this variable
+    local allocation = allocate_local(ctx, lang_type)
+    -- Pretty print
+    if allocation.type == 'stack' then
+      local first = tostring(allocation.offset)
+      local last = tostring(allocation.offset + allocation.size - 1)
+      io.write('local `'..name..'` is stack allocated on ['..first..', '..last..']\n')
+    else
+      local first = 'r'..allocation.first
+      local last = 'r'..(allocation.first + allocation.count - 1)
+      io.write('local `'..name..'` is register allocated on ['..first..', '..last..']\n')
+    end
+    -- Associate this declaration with this variable name in the current scope
+    local new_decl = lang.variable(name, lang_type, allocation)
+    ctx.local_scope[name] = new_decl
+    return new_decl
+  end
 end
 
 -- Creates a new function declaration and adds it to the current scope
@@ -81,69 +230,21 @@ end
 --   name     : string
 --   ast_decl : ast.function_declaration
 --   ir_subr  : ir.subroutine
---   -> decl.function
+--   -> lang.function_
 local function new_function(ctx, name, ast_decl, ir_subr)
   if ctx.module_scope[name] then
     report_error('Function `'..name..'` has already been declared in this scope.')
   else
-    local new_decl = decl.function_(name, ast_decl, ir_subr)
+    local new_decl = lang.function_(name, ast_decl, ir_subr)
     ctx.module_scope[name] = new_decl
     return new_decl
   end
 end
 
--- Attempts to create a new local variable in the current scope
---   ctx       : Compiler context
---   name      : string
---   type_spec : ast.type_specifier
---   -> decl.variable
-local function new_local_variable(ctx, name, type_spec)
-  if ctx.local_scope[name] then
-    report_error('`'..name..'` was already declared in this scope.')
-  else
-    local ir_alloc
-    if type_spec.quantity then
-      local size_quadwords = type_spec.quantity
-      local offset, size = alloc_stack_space(ctx, size_quadwords)
-      -- Allocate a new block of stack space to this variable
-      ir_alloc = ctx.subroutine:alloc_stack(offset, size)
-      -- Pretty print
-      local first = tostring(ir_alloc.offset)
-      local last = tostring(ir_alloc.offset + ir_alloc.size - 1)
-      io.write('local `'..name..'` is stack allocated on ['..first..', '..last..']\n')
-    else
-      -- Allocate a new temporary register to this variable
-      local size_quadwords = 1
-      ir_alloc = ctx.subroutine:alloc_temporary(size_quadwords)
-      -- Pretty print
-      local first = 'r'..ir_alloc.first
-      local last = 'r'..(ir_alloc.first + ir_alloc.count - 1)
-      io.write('local `'..name..'` is register allocated on ['..first..', '..last..']\n')
-    end
-    -- Associate this declaration with this variable name in the current scope
-    local new_decl = decl.variable(name, type_spec, ir_alloc)
-    ctx.local_scope[name] = new_decl
-    return new_decl
-  end
-end
-
--- Returns the declaration corresponding to the named function
---   ctx       : Compiler context
---   name_path : ast.name_path
---   -> decl.function
-local function find_function(ctx, name_path)
-  local name_str = tostring(name_path)
-  local func_decl = ctx.module_scope[name_str]
-  if not func_decl then
-    report_error('Function `'..name_str..'` was not found in this scope.')
-  end
-  return func_decl
-end
-
 -- Returns the declaration corresponding to the named variable
 --   ctx       : Compiler context
 --   name_path : ast.name_path
---   -> decl.variable
+--   -> lang.variable
 local function find_variable(ctx, name_path)
   if #name_path > 1 then
     io.write('WARNING: Ignoring full path during search for '..name_path..'\n')
@@ -152,23 +253,21 @@ local function find_variable(ctx, name_path)
   if decl then
     return decl
   else
-    report_error('`'..name..'` was not found in this scope.')
+    report_error('`'..name_path..'` was not found in this scope.')
   end
 end
 
--- If the lvalue is a declaration type, creates a new local and returns the declaration object
--- If the lvalue is a reference type, finds and returns the declaration object
---   ctx        : Compiler context
---   ast_lvalue : ast.lvalue
---   -> decl.variable
-local function get_lvalue_declaration(ctx, ast_lvalue)
-  if ast_lvalue.type == 'declaration' then
-    return new_local_variable(ctx, ast_lvalue.name, ast_lvalue.type_specifier)
-  elseif ast_lvalue.type == 'reference' then
-    return find_variable(ctx, ast_lvalue.name_path)
-  else
-    error()
+-- Returns the declaration corresponding to the named function
+--   ctx       : Compiler context
+--   name_path : ast.name_path
+--   -> lang.function
+local function find_function(ctx, name_path)
+  local name_str = tostring(name_path)
+  local func_decl = ctx.module_scope[name_str]
+  if not func_decl then
+    report_error('Function `'..name_str..'` was not found in this scope.')
   end
+  return func_decl
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -179,10 +278,6 @@ local put_call
 local put_unop_expression
 local put_binop_expression
 local put_lvalue_expression
-local init_lvalue_temporary
-local init_lvalue_stack
-local assign_lvalue_temporary
-local assign_lvalue_stack
 local put_assignment
 local put_call_assignment
 local put_expression
@@ -245,14 +340,50 @@ function put_binop_expression(ctx, expr_a, expr_b, ir_op_fn)
   return reg_z
 end
 
+function compute_lvalue_eval_type(ctx, ast_lvalue)
+  local var_type
+  if ast_lvalue.type == 'declaration' then
+    -- This lvalue expression has the base type that it declares
+    var_type = find_type(ctx, ast_lvalue.type_specifier.name_path)
+  elseif ast_lvalue.type == 'reference' then
+    -- This lvalue expression references a variable somewhere
+    var_type = find_variable(ctx, ast_lvalue.name_path).variable_type
+  else
+    error('')
+  end
+  -- Examine type
+  if var_type.type == 'array' then
+    if ast_lvalue.index_expressions then
+      -- Normally each index expression would descend further into the type
+      if #ast_lvalue.index_expressions ~= 1 then
+        report_error('Multiple index expressions are unsupported.')
+      end
+      return var_type.value_type
+    end
+    -- Just an array
+    return var_type
+  elseif var_type.type == 'reference' then
+    -- References always evaluate to their referenced type
+    return var_type.value_type
+  else
+    -- Just your average variable
+    return var_type
+  end
+end
+
+function compute_expression_eval_type(ctx, expr)
+  if expr.type == 'lvalue' then
+    return compute_lvalue_eval_type(ctx, expr.lvalue)
+  else
+    -- Everything else produces an int, I think
+    return lang.type_int64
+  end
+end
+
 -- Evaluates a non-temporary lvalue expression to a pointer given its original variable declaration
 -- and lvalue of the AST.
 -- Returns the IR register object containing the pointer.
 function put_lvalue_expression(ctx, var_decl, lvalue_ast)
-  -- For now we're expecting only arrays here. Structs will come later.
-  if not var_decl.type_specifier.quantity then
-    error('We have a stack-allocated variable `'..lvalue_ast.name_path..'` that isn\'t an array?')
-  end
   if not lvalue_ast.index_expressions then
     report_error('Invalid use of array `'..lvalue_ast.name_path..'` in expression')
   end
@@ -260,79 +391,120 @@ function put_lvalue_expression(ctx, var_decl, lvalue_ast)
   local reg_idx = put_expression(ctx, lvalue_ast.index_expressions[1])
   local reg_offs = new_temp_reg(ctx)
   local reg_ptr = new_temp_reg(ctx)
-  emit(ctx, ir.stackaddr(reg_ptr, var_decl.ir_alloc.id))
+  emit(ctx, ir.stackaddr(reg_ptr, var_decl.allocation.id))
   emit(ctx, ir.mul(reg_offs, reg_idx, '8'))
   emit(ctx, ir.add(reg_ptr, reg_ptr, reg_offs))
   return reg_ptr
 end
 
--- Initializes a temporary-allocated lvalue to the given expression.
--- If `rvalue_ast` is nil, default-initializes lvalue instead.
-function init_lvalue_temporary(ctx, var_decl, lvalue_ast, rvalue_ast)
-  local name = lvalue_ast.name
-  if rvalue_ast then
-    -- Initialize to expression
-    emit(ctx, ir.mov(ir.tempreg(var_decl.ir_alloc.first), put_expression(ctx, rvalue_ast)))
+local function is_assignment_valid(ctx, lvalue_type, expr_type)
+  -- For now, only ints are possible
+  return lvalue_type.type == 'primitive' and lvalue_type.ptype == 'int64' and
+         expr_type.type == 'primitive' and expr_type.ptype == 'int64'
+end
+
+-- TODO: src_reg needs to be an IR allocation, not an IR register
+local function put_assignment_ll_copy_init(ctx, dst_var, src_reg)
+  local dst_alloc = dst_var.allocation
+  -- Punt, assume always a single register
+  assert(dst_alloc.type == 'register')
+  assert(dst_alloc.count == 1)
+  emit(ctx, ir.mov(ir.tempreg(dst_alloc.first), src_reg))
+end
+
+local function put_assignment_ll_init(ctx, dst_var)
+  local dst_alloc = dst_var.allocation
+  -- Punt, assume always a single register
+  assert(dst_alloc.type == 'register')
+  assert(dst_alloc.count == 1)
+  emit(ctx, ir.mov(ir.tempreg(dst_alloc.first), ir.literal(0)))
+end
+
+local function put_assignment_ll_move(ctx, dst_var, src_var)
+  local dst_alloc = dst_var.allocation
+  local src_alloc = src_var.allocation
+  assert(src_alloc.type == 'register')
+  local src_reg = ir.tempreg(src_alloc.first)
+  if dst_alloc.type == 'register' then
+    -- Calculate destination register and move
+    local dst_reg = ir.tempreg(dst_alloc.first)
+    emit(ctx, ir.mov(dst_reg, src_reg))
+  elseif dst_alloc.type == 'argument' then
+    -- This is a function argument -modification is strictly forbidden.
+    report_error('Attempt to assign function argument `'..
+                 (lvalue_var.name_path or lvalue_var.name)..'`')
+  elseif dst_alloc.type == 'stack' then
+    -- Calculate destination address and store
+    local dst_ptr_reg = put_lvalue_expression(ctx, lvalue_var, lvalues[i])
+    emit(ctx, ir.str(dst_ptr_reg, src_reg))
   else
-    -- Zero-initialize by default
-    emit(ctx, ir.mov(ir.tempreg(var_decl.ir_alloc.first), '0'))
+    assert(false)
   end
 end
 
--- Initializes a stack-allocated lvalue to the given expression.
--- If `rvalue_ast` is nil, default-initializes lvalue instead.
-function init_lvalue_stack(ctx, var_decl, lvalue_ast, rvalue_ast)
-  io.write('WARNING: Skipping initialization of stack-allocated variable `'..var_decl.name..'`\n')
-end
-
--- Assigns a temporary-allocated lvalue to the given expression.
-function assign_lvalue_temporary(ctx, var_decl, lvalue_ast, rvalue_ast)
-  if var_decl.ir_alloc.count ~= 1 then
-    error('Register assignments are (currently) unsupported for count != 1')
+local function put_assignment(ctx, ast_lvalues, ast_expressions)
+  -- We expect a full assignment here
+  assert(#ast_lvalues == #ast_expressions)
+  local n = #ast_lvalues
+  -- Lvalue types, by sub-assignment index
+  local lvalue_types = { }
+  -- Expression types, by sub-assignment index
+  local expr_types = { }
+  -- Temporary value allocations, by sub-assignment index
+  local temp_vars = { }
+  -- Pre-process assignment ops and validate
+  for i=1,n do
+    -- Compute assignment operand types
+    lvalue_types[i] = compute_lvalue_eval_type(ctx, ast_lvalues[i])
+    expr_types[i] = compute_expression_eval_type(ctx, ast_expressions[i])
+    -- Verify we can make assignment
+    if not is_assignment_valid(ctx, lvalue_types[i], expr_types[i]) then
+      report_error('Invalid assignment')
+    end
   end
-  -- Assignment to temporary storage means generating simple mov instructions
-  emit(ctx, ir.mov(ir.tempreg(var_decl.ir_alloc.first), put_expression(ctx, rvalue_ast)))
+  -- Pre-evaluate the expressions for referential lvalues, copy to temporary space
+  for i=1,n do
+    if ast_lvalues[i].type == 'reference' then
+      -- Create temporary variable to hold this expression
+      temp_vars[i] = lang.variable(nil, expr_types[i], allocate_local(ctx, expr_types[i]))
+      local expr_reg = put_expression(ctx, ast_expressions[i])
+      -- Copy-initialize to expression value
+      put_assignment_ll_copy_init(ctx, temp_vars[i], expr_reg)
+    end
+  end
+  -- Move temporary expression results into referential lvalues
+  -- Declare and initialize lvalues which were declared by this assignment statement
+  for i=1,n do
+    if ast_lvalues[i].type == 'reference' then
+      assert(temp_vars[i])
+      -- Find destination
+      local lvalue_var = find_variable(ctx, ast_lvalues[i].name_path)
+      -- Move stored expression value
+      put_assignment_ll_move(ctx, lvalue_var, temp_vars[i])
+    elseif ast_lvalues[i].type == 'declaration' then
+      -- Declarations can't be referenced on the right hand side, so their expression result doesn't
+      -- need to be evaluated and saved beforehand.
+      -- Declare this variable
+      local lvalue_var = new_local_variable(ctx, ast_lvalues[i].name, lvalue_types[i])
+      -- Evaluate expression
+      local expr_reg = put_expression(ctx, ast_expressions[i])
+      -- Copy-initialize
+      put_assignment_ll_copy_init(ctx, lvalue_var, expr_reg)
+    end
+  end
 end
 
--- Assigns a stack-allocated lvalue to the given expression.
-function assign_lvalue_stack(ctx, var_decl, lvalue_ast, rvalue_ast)
-  local reg_val = put_expression(ctx, rvalue_ast)
-  local reg_ptr = put_lvalue_expression(ctx, var_decl, lvalue_ast)
-  emit(ctx, ir.str(reg_ptr, reg_val))
-end
-
--- Deprecated
--- Generates IR code which directly implements the given (single) assignment.
-function put_assignment(ctx, lvalue_ast, rvalue_ast)
-  local decl = get_lvalue_declaration(ctx, lvalue_ast)
-  if lvalue_ast.type == 'declaration' then
-    -- Initialize this variable
-    if decl.ir_alloc.type == 'temporary' then
-      init_lvalue_temporary(ctx, decl, lvalue_ast, rvalue_ast)
-    elseif decl.ir_alloc.type == 'stack' then
-      init_lvalue_stack(ctx, decl, lvalue_ast, rvalue_ast)
+local function put_null_assignment(ctx, ast_lvalues)
+  for i,ast_lvalue in ipairs(ast_lvalues) do
+    if ast_lvalue.type == 'declaration' then
+      -- Declare this variable
+      local type_ = compute_type(ctx, ast_lvalue.type_specifier)
+      local var = new_local_variable(ctx, ast_lvalue.name, type_)
+      -- Default-initialize
+      put_assignment_ll_init(ctx, var)
     else
-      assert(false)
+      report_error('Invalid use of non-declarational lvalue in default initialization')
     end
-  elseif lvalue_ast.type == 'reference' then
-    -- Make sure we're not "initializing" an existing local
-    if rvalue_ast == nil then
-      report_error('Missing rvalue for assignment to `'..lvalue_ast.name_path..'`')
-    end
-    -- Assign to this variable
-    if decl.ir_alloc.type == 'temporary' then
-      assign_lvalue_temporary(ctx, decl, lvalue_ast, rvalue_ast)
-    elseif decl.ir_alloc.type == 'argument' then
-      -- This is a function argument -modification is strictly forbidden.
-      report_error('Attempt to assign function argument `'..lvalue_ast.name_path..'`')
-    elseif decl.ir_alloc.type == 'stack' then
-      assign_lvalue_stack(ctx, decl, lvalue_ast, rvalue_ast)
-    else
-      assert(false)
-    end
-  else
-    -- This is an impossibility!
-    error('Invalid lvalue type `'..tostring(lvalue_ast.type)..'`')
   end
 end
 
@@ -350,16 +522,16 @@ function put_call_assignment(ctx, lvalue_exprs, call_expr)
   local lvalue_decls = { }
   local return_regs = { }
   for i=1,#lvalue_exprs do
-    local decl = get_lvalue_declaration(ctx, lvalue_exprs[i])
+    local decl = find_or_declare_lvalue(ctx, lvalue_exprs[i])
     lvalue_decls[i] = decl
     -- Allocate new registers depending on allocation.
-    if decl.ir_alloc.type == 'temporary' then
+    if decl.allocation.type == 'register' then
       -- This lvalue has temporary allocation, so it's fair game to assign directly.
-      return_regs[i] = ir.tempreg(decl.ir_alloc.first)
-    elseif decl.ir_alloc.type == 'stack' then
+      return_regs[i] = ir.tempreg(decl.allocation.first)
+    elseif decl.allocation.type == 'stack' then
       -- We'll have to store this value somewhere else, so allocate it a temporary.
       return_regs[i] = new_temp_reg(ctx)
-    elseif decl.ir_alloc.type == 'argument' then
+    elseif decl.allocation.type == 'argument' then
       report_error('Attempt to assign function argument `'..name..'`')
     end
   end
@@ -368,7 +540,7 @@ function put_call_assignment(ctx, lvalue_exprs, call_expr)
   -- Assign registers where they actually must go.
   for i=1,#lvalue_exprs do
     local decl = lvalue_decls[i]
-    if decl.ir_alloc.type == 'stack' then
+    if decl.allocation.type == 'stack' then
       -- We created a temporary for this return value before the call.
       -- Compute the destination pointer and store!
       local reg_ptr = put_lvalue_expression(ctx, decl, lvalue_exprs[i])
@@ -377,6 +549,7 @@ function put_call_assignment(ctx, lvalue_exprs, call_expr)
   end
 end
 
+-- TODO: Needs to start returning an IR allocation and a type, not an IR register
 -- Generates IR code which evaluates the given AST expression
 -- Returns an IR operand (not necessarily a new temporary) which contains the expression result
 function put_expression(ctx, expr)
@@ -482,14 +655,15 @@ function pet.logor(ctx, expr)
 end
 
 function pet.lvalue(ctx, expr)
+  -- This is an lvalue expression, so it must have a declaration
   local decl = find_variable(ctx, expr.lvalue.name_path)
-  if decl.ir_alloc.type == 'temporary' then
-    assert(decl.ir_alloc.count == 1)
-    return ir.tempreg(decl.ir_alloc.first)
-  elseif decl.ir_alloc.type == 'argument' then
-    assert(decl.ir_alloc.count == 1)
-    return ir.argreg(decl.ir_alloc.first)
-  elseif decl.ir_alloc.type == 'stack' then
+  if decl.allocation.type == 'register' then
+    assert(decl.allocation.count == 1)
+    return ir.tempreg(decl.allocation.first)
+  elseif decl.allocation.type == 'argument' then
+    assert(decl.allocation.count == 1)
+    return ir.argreg(decl.allocation.first)
+  elseif decl.allocation.type == 'stack' then
     -- Calculate address and store!
     local reg_ptr = put_lvalue_expression(ctx, decl, expr.lvalue)
     local reg_val = new_temp_reg(ctx)
@@ -497,7 +671,7 @@ function pet.lvalue(ctx, expr)
     -- Result is in new temporary
     return reg_val
   else
-    error('Invalid declaration IR allocation type `'..decl.ir_alloc.type..'`')
+    error('Invalid declaration IR allocation type `'..decl.allocation.type..'`')
   end
 end
 
@@ -558,19 +732,13 @@ pst['return'] = function(ctx, ast_stmt)
 end
 
 function pst.assignment(ctx, ast_stmt)
-  -- Validate general assignment configuration.
+  -- Validate general assignment configuration
   local num_expressions = #ast_stmt.expressions
   local num_lvalues = #ast_stmt.lvalues
   if num_lvalues == num_expressions then
-    for i=1,num_lvalues do
-      put_assignment(ctx, ast_stmt.lvalues[i], ast_stmt.expressions[i])
-    end
+    put_assignment(ctx, ast_stmt.lvalues, ast_stmt.expressions)
   elseif num_expressions == 0 then
-    -- Default initialize declarations
-    -- If an lvalue isn't a declaration, this will fail accordingly.
-    for i=1,num_lvalues do
-      put_assignment(ctx, ast_stmt.lvalues[i], nil)
-    end
+    put_null_assignment(ctx, ast_stmt.lvalues)
   else
     local first_expr = ast_stmt.expressions[1]
     -- If the expression list is a single call, expand its return values to the given lvalues.
@@ -608,10 +776,16 @@ local function put_function(ctx, ast_func)
   local local_scope = { }
   for i,ast_arg_decl in ipairs(ast_func.arguments) do
     local name = ast_arg_decl.name
-    local type_spec = ast_arg_decl.type_specifier
+    -- Compute the type from the AST type specifier
+    local arg_type = compute_type(ctx, ast_arg_decl.type_specifier)
+    if not (arg_type.type == 'primitive' and arg_type.ptype == 'int64') then
+      report_error('Argument value types other than int64 are unsupported.')
+    end
+    -- Allocate this argument
     local size_quadwords = 1
-    local ir_alloc = ir_subr:alloc_argument(size_quadwords)
-    local_scope[name] = decl.variable(name, type_spec, ir_alloc)
+    local allocation = ir_subr:alloc_argument(size_quadwords)
+    -- Place in local scope
+    local_scope[name] = lang.variable(name, arg_type, allocation)
   end
   -- Allocate return registers
   for i,ast_arg_decl in ipairs(ast_func.returns) do

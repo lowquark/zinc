@@ -6,33 +6,42 @@
 ----------------------------------------------------------------------------------------------------
 -- Tree construction
 
-
 ast = { }
 
 local name_path_meta = { }
 function name_path_meta.__tostring(self)
   return table.concat(self, ':')
 end
+function name_path_meta.__concat(a, b)
+  if type(a) == 'string' then
+    return a..table.concat(b, ':')
+  elseif type(b) == 'string' then
+    return table.concat(a, ':')..b
+  else
+    error('Can\'t concatenate ast.name_path with non-string')
+  end
+end
 function ast.name_path()
   return setmetatable({ }, name_path_meta)
 end
 
 function ast.type_specifier(name_path, const, ref, quantity)
-  assert(name_path)
+  assert(getmetatable(name_path) == name_path_meta)
   assert(type(const) == 'boolean')
   assert(type(ref) == 'boolean')
   assert(not quantity or type(quantity) == 'number')
+  -- TODO: rename ref -> reference
   return { name_path = name_path, const = const, ref = ref, quantity = quantity }
 end
 
 function ast.lvalue_declaration(type_spec, name)
-  assert(type_spec)
-  assert(name)
+  assert(type(type_spec) == 'table')
+  assert(type(name) == 'string')
   return { type = 'declaration', type_specifier = type_spec, name = name }
 end
 
 function ast.lvalue(name_path, index_exprs)
-  assert(type(name_path) == 'table')
+  assert(getmetatable(name_path) == name_path_meta)
   assert(not index_exprs or type(index_exprs) == 'table')
   return { type = 'reference', name_path = name_path, index_expressions = index_exprs }
 end
@@ -43,7 +52,7 @@ function ast.expr_integer(value)
   return { type = 'integer', value = value }
 end
 function ast.expr_call(name_path, args)
-  assert(name_path)
+  assert(getmetatable(name_path) == name_path_meta)
   assert(args)
   return { type = 'call',
            name_path = name_path,
@@ -158,13 +167,6 @@ end
 function ast.stmt_block()
   return { type = 'block' }
 end
-function ast.stmt_local_declaration(type_name_path, name)
-  assert(type_name_path)
-  assert(name)
-  return { type = 'local',
-           type_name_path = type_name_path,
-           name = name }
-end
 function ast.stmt_if(expr, if_stmt, else_stmt)
   assert(expr)
   assert(if_stmt)
@@ -189,7 +191,7 @@ function ast.stmt_assignment(lvalue_list, expr_list)
            expressions = expr_list }
 end
 function ast.stmt_function_call(name_path, args)
-  assert(name_path)
+  assert(getmetatable(name_path) == name_path_meta)
   assert(args)
   return { type = 'call',
            name_path = name_path,
@@ -205,13 +207,13 @@ function ast.struct_field_declaration(type_name_path, name)
            name = name }
 end
 function ast.struct_access_declaration(module_name_path)
-  assert(module_name_path)
+  assert(getmetatable(module_name_path) == name_path_meta)
   return { type = 'access', name_path = module_name_path }
 end
 
 -- Module declarations: member | function
 function ast.member_declaration(type_name_path, name)
-  assert(type_name_path)
+  assert(getmetatable(type_name_path) == name_path_meta)
   assert(name)
   return { type = 'member',
            type_name_path = type_name_path,
@@ -231,14 +233,14 @@ end
 
 -- File-scope declarations: struct | module
 function ast.struct_declaration(name_path, declarations)
-  assert(name_path)
+  assert(getmetatable(name_path) == name_path_meta)
   assert(declarations)
   return { type = 'struct',
            name_path = name_path,
            declarations = declarations }
 end
 function ast.module_declaration(name_path, declarations)
-  assert(name_path)
+  assert(getmetatable(name_path) == name_path_meta)
   assert(declarations)
   return { type = 'module',
            name_path = name_path,
@@ -256,7 +258,7 @@ local function type_spec_str(type_spec)
   if type_spec.const then
     str = str..'const '
   end
-  str = str..table.concat(type_spec.name_path, ':')
+  str = str..type_spec.name_path
   if type_spec.quantity then
     str = str..' ['..tostring(type_spec.quantity)..']'
   end
@@ -273,7 +275,7 @@ function dump_lvalue(lvalue, level)
   if lvalue.type == 'declaration' then
     io.write(indent..'DECLARATION '..type_spec_str(lvalue.type_specifier)..' '..lvalue.name..'\n')
   elseif lvalue.type == 'reference' then
-    io.write(indent..'REFERENCE '..table.concat(lvalue.name_path, ':')..'\n')
+    io.write(indent..'REFERENCE '..lvalue.name_path..'\n')
     if lvalue.index_expressions then
       for i,idx_expr in ipairs(lvalue.index_expressions) do
         io.write(indent2..'INDEX\n')
@@ -290,7 +292,7 @@ function dump_expr(expr, level)
   local indent = string.rep('  ', level)
   local indent2 = string.rep('  ', level+1)
   if expr.type == 'call' then
-    io.write(indent..'CALL '..table.concat(expr.name_path, ':')..'\n')
+    io.write(indent..'CALL '..expr.name_path..'\n')
     for k,arg_expr in ipairs(expr.arguments) do
       dump_expr(arg_expr, level+1)
     end
@@ -334,7 +336,7 @@ function dump_stmt(stmt, level)
       end
     end
   elseif stmt.type == 'local' then
-    io.write(indent..'LOCAL '..stmt.name..' : '..table.concat(stmt.type_name_path,':')..'\n')
+    io.write(indent..'LOCAL '..stmt.name..' : '..stmt.type_name_path..'\n')
   elseif stmt.type == 'if' then
     io.write(indent..'IF\n')
     dump_expr(stmt.expression, level+1)
@@ -350,7 +352,7 @@ function dump_stmt(stmt, level)
       dump_stmt(block_stmt, level+1)
     end
   elseif stmt.type == 'call' then
-    io.write(indent..'CALL '..table.concat(stmt.name_path,':')..'\n')
+    io.write(indent..'CALL '..stmt.name_path..'\n')
     for i,arg_expr in ipairs(stmt.arguments) do
       dump_expr(arg_expr, level+1)
     end
@@ -378,7 +380,7 @@ local function dump_module_decl(decl, level)
     io.write(')\n')
     dump_stmt(decl.block, level + 1)
   elseif decl.type == 'member' then
-    io.write(indent..'MEMBER '..decl.name..' : '..table.concat(decl.type_name_path,':')..'\n')
+    io.write(indent..'MEMBER '..decl.name..' : '..type_name_path..'\n')
   else
     error('unknown decl declaration type `'..decl.type..'`')
   end
@@ -387,7 +389,7 @@ end
 local function dump_module(module, level)
   local level = level or 0
   local indent = string.rep('  ', level)
-  io.write(indent..'MODULE '..table.concat(module.name_path,':')..'\n')
+  io.write(indent..'MODULE '..module.name_path..'\n')
   for i,decl in ipairs(module.declarations) do
     dump_module_decl(decl, level + 1)
   end
@@ -397,9 +399,9 @@ local function dump_struct_decl(decl, level)
   local level = level or 0
   local indent = string.rep('  ', level)
   if decl.type == 'access' then
-    io.write(indent..'ACCESS '..table.concat(decl.name_path,':')..'\n')
+    io.write(indent..'ACCESS '..decl.name_path..'\n')
   elseif decl.type == 'field' then
-    io.write(indent..'FIELD '..decl.name..' : '..table.concat(decl.type_name_path,':')..'\n')
+    io.write(indent..'FIELD '..decl.name..' : '..decl.type_name_path..'\n')
   else
     error('unknown struct declaration type `'..decl.type..'`')
   end
@@ -408,7 +410,7 @@ end
 local function dump_struct(struct, level)
   local level = level or 0
   local indent = string.rep('  ', level)
-  io.write(indent..'STRUCT '..table.concat(struct.name_path,':')..'\n')
+  io.write(indent..'STRUCT '..struct.name_path..'\n')
   for i,decl in ipairs(struct.declarations) do
     dump_struct_decl(decl, level + 1)
   end
