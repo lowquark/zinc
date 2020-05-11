@@ -25,13 +25,12 @@ function ast.name_path()
   return setmetatable({ }, name_path_meta)
 end
 
-function ast.type_specifier(name_path, const, ref, quantity)
+function ast.type_specifier(name_path, const, reference, quantity)
   assert(getmetatable(name_path) == name_path_meta)
   assert(type(const) == 'boolean')
-  assert(type(ref) == 'boolean')
+  assert(type(reference) == 'boolean')
   assert(not quantity or type(quantity) == 'number')
-  -- TODO: rename ref -> reference
-  return { name_path = name_path, const = const, ref = ref, quantity = quantity }
+  return { name_path = name_path, const = const, reference = reference, quantity = quantity }
 end
 
 function ast.lvalue_declaration(type_spec, name)
@@ -262,7 +261,7 @@ local function type_spec_str(type_spec)
   if type_spec.quantity then
     str = str..' ['..tostring(type_spec.quantity)..']'
   end
-  if type_spec.ref then
+  if type_spec.reference then
     str = str..' &'
   end
   return str

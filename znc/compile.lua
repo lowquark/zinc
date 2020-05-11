@@ -171,7 +171,7 @@ local function compute_type(ctx, ast_type_spec)
     -- Wrap type in array
     t = lang.type_array(t, ast_type_spec.quantity)
   end
-  if ast_type_spec.ref then
+  if ast_type_spec.reference then
     -- Wrap type in reference
     t = lang.type_reference(t)
   end
