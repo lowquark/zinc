@@ -165,25 +165,25 @@ end
 
 local function emit_prologue(ctx)
   emit(ctx, 'push %rbp')
-  emit(ctx, 'mov  %rsp, %rbp')
+  emit(ctx, 'movq %rsp, %rbp')
 end
 
 local function emit_epilogue(ctx)
-  emit(ctx, 'mov  %rbp, %rsp')
+  emit(ctx, 'movq %rbp, %rsp')
   emit(ctx, 'pop  %rbp')
   emit(ctx, 'ret')
 end
 
 local function emit_stack_alloc(ctx, size)
   -- Allocate by subtracting from %rsp
-  emit(ctx, 'sub  $'..(size*8)..', %rsp')
+  emit(ctx, 'subq $'..(size*8)..', %rsp')
   -- Track stack index (relative to %rbp)
   ctx.stack_index = ctx.stack_index + size
 end
 
 local function emit_stack_dealloc(ctx, size)
   -- Deallocate by adding to %rsp
-  emit(ctx, 'add  $'..(size*8)..', %rsp')
+  emit(ctx, 'addq $'..(size*8)..', %rsp')
   -- Track stack index (relative to %rbp)
   ctx.stack_index = ctx.stack_index - size
 end
@@ -206,11 +206,11 @@ local function emit_mov(ctx, op_x, type_x, op_z, type_z)
   -- Move directly if possible
   if type_x == 'register' or type_z == 'register' then
     -- If either is a register, only one memory reference will be possible here
-    emit(ctx, 'mov  '..op_x..', '..op_z)
+    emit(ctx, 'movq '..op_x..', '..op_z)
   else
     -- Into the accumulator it goes
-    emit(ctx, 'mov  '..op_x..', %rax')
-    emit(ctx, 'mov  %rax, '..op_z)
+    emit(ctx, 'movq '..op_x..', %rax')
+    emit(ctx, 'movq %rax, '..op_z)
   end
 end
 
@@ -268,14 +268,14 @@ local function emit_stmt_binop(ctx, ir_stmt, instr)
   if type_z == 'register' then
     -- op_z is a register, so only a single memory reference will be possible here
     if op_x ~= op_z then
-      emit(ctx, 'mov  '..op_x..', '..op_z)
+      emit(ctx, 'movq '..op_x..', '..op_z)
     end
     emit(ctx, instr..' '..op_y..', '..op_z)
   else
     -- Into the accumulator it goes
-    emit(ctx, 'mov  '..op_x..', %rax')
+    emit(ctx, 'movq '..op_x..', %rax')
     emit(ctx, instr..' '..op_y..', %rax')
-    emit(ctx, 'mov  %rax, '..op_z)
+    emit(ctx, 'movq %rax, '..op_z)
   end
 end
 
@@ -348,7 +348,7 @@ function emit_stmt.lnot(ctx, ir_stmt)
   emit_mov(ctx, op_x, type_x, op_z, type_z)
   assert(type_z ~= 'literal', 'Invalid instruction')
   emit(ctx, 'cmp  $0, '..op_z)
-  emit(ctx, 'mov  $0, '..op_z)
+  emit(ctx, 'movq $0, '..op_z)
   emit(ctx, 'sete '..reg_byte_form(op_z, type_z))
 end
 
@@ -432,13 +432,13 @@ end
 function emit_stmt.str(ctx, ir_stmt)
   local op_w, type_w = operand(ctx, ir_stmt.register_w)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
-  emit(ctx, 'mov '..op_x..', ('..op_w..')')
+  emit(ctx, 'movq '..op_x..', ('..op_w..')')
 end
 
 function emit_stmt.ldr(ctx, ir_stmt)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   local op_x, type_x = operand(ctx, ir_stmt.register_x)
-  emit(ctx, 'mov ('..op_x..'), '..op_z)
+  emit(ctx, 'movq ('..op_x..'), '..op_z)
 end
 
 function emit_stmt.call(ctx, ir_stmt)
@@ -606,13 +606,13 @@ local function generate(ir_prog, outfile)
   emit(ctx, '.type main, @function')
   emit_label(ctx, 'main')
   emit(ctx, 'push %rbp')
-  emit(ctx, 'mov  %rsp, %rbp')
-  emit(ctx, 'sub  $8, %rsp')
+  emit(ctx, 'movq %rsp, %rbp')
+  emit(ctx, 'subq $8, %rsp')
   -- TODO: The module containing main needs to be specified as a compiler argument
   emit(ctx, 'call z$main')
-  emit(ctx, 'mov  -8(%rbp), %rax')
-  emit(ctx, 'add  $8, %rsp')
-  emit(ctx, 'mov  %rbp, %rsp')
+  emit(ctx, 'movq -8(%rbp), %rax')
+  emit(ctx, 'addq $8, %rsp')
+  emit(ctx, 'movq %rbp, %rsp')
   emit(ctx, 'pop  %rbp')
   emit(ctx, 'ret')
   emit_line(ctx)
