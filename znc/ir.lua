@@ -27,7 +27,7 @@ function ir.literal(num)
   return tostring(num)
 end
 
-function ir.tempreg(index)
+function ir.register(index)
   assert(type(index) == 'number')
   return 'r'..index
 end
@@ -42,7 +42,7 @@ function ir.retreg(index)
   return 'b'..index
 end
 
-function ir.istempreg(reg)
+function ir.isregister(reg)
   assert(type(reg) == 'string')
   return reg:sub(1,1) == 'r'
 end

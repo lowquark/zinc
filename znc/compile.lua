@@ -121,6 +121,14 @@ local function copy_scope(scope)
   return new_scope
 end
 
+local bb = { }
+
+local slot_meta = { __index = { } }
+
+function bb.slot(value_type, allocation)
+  return { value_type = value_type, allocation = allocation }
+end
+
 ----------------------------------------------------------------------------------------------------
 -- Allocations
 
@@ -142,7 +150,7 @@ end
 -- Conveniently allocates a single temporary register
 local function new_temp_reg(ctx)
   local allocation = ctx.subroutine:alloc_register(1)
-  return ir.tempreg(allocation.first)
+  return ir.register(allocation.first)
 end
 
 local function find_type(ctx, name_path)
@@ -323,21 +331,40 @@ function put_call(ctx, name_path, argument_exprs, return_regs)
   emit(ctx, ir.call(return_regs, target_subr.name, argument_regs))
 end
 
+local function is_int64(lang_type)
+  return lang_type.type == 'primitive' and lang_type.ptype == 'int64'
+end
+
+local function new_temp_int64(ctx)
+  return lang.variable(nil, lang.type_int64, ctx.subroutine:alloc_register(1))
+end
+
 -- Generates IR code which computes a simple unary arithmetic expression
 function put_unop_expression(ctx, expr, ir_op_fn)
-  local reg_x = put_expression(ctx, expr)
-  local reg_z = new_temp_reg(ctx)
-  emit(ctx, ir_op_fn(reg_z, reg_x))
-  return reg_z
+  local var_x = put_expression(ctx, expr)
+  if not is_int64(var_x) then
+    report_error('Unary operator expects int64')
+  end
+  local var_z = new_temp_int64(ctx)
+  emit(ctx, ir_op_fn(ir.register(var_z.allocation.first), ir.register(var_x.allocation.first)))
+  return var_z
 end
 
 -- Generates IR code which compute a simple binary arithmetic expression
 function put_binop_expression(ctx, expr_a, expr_b, ir_op_fn)
-  local reg_x = put_expression(ctx, expr_a)
-  local reg_y = put_expression(ctx, expr_b)
-  local reg_z = new_temp_reg(ctx)
-  emit(ctx, ir_op_fn(reg_z, reg_x, reg_y))
-  return reg_z
+  local var_x = put_expression(ctx, expr_a)
+  if not is_int64(var_x) then
+    report_error('Unary operator expects int64')
+  end
+  local var_y = put_expression(ctx, expr_b)
+  if not is_int64(var_y) then
+    report_error('Unary operator expects int64')
+  end
+  local var_z = new_temp_int64(ctx)
+  emit(ctx, ir_op_fn(ir.register(var_z.allocation.first),
+                     ir.register(var_x.allocation.first),
+                     ir.register(var_y.allocation.first)))
+  return var_z
 end
 
 function compute_lvalue_eval_type(ctx, ast_lvalue)
@@ -403,31 +430,35 @@ local function is_assignment_valid(ctx, lvalue_type, expr_type)
          expr_type.type == 'primitive' and expr_type.ptype == 'int64'
 end
 
--- TODO: src_reg needs to be an IR allocation, not an IR register
-local function put_assignment_ll_copy_init(ctx, dst_var, src_reg)
-  local dst_alloc = dst_var.allocation
-  -- Punt, assume always a single register
-  assert(dst_alloc.type == 'register')
-  assert(dst_alloc.count == 1)
-  emit(ctx, ir.mov(ir.tempreg(dst_alloc.first), src_reg))
-end
-
 local function put_assignment_ll_init(ctx, dst_var)
   local dst_alloc = dst_var.allocation
   -- Punt, assume always a single register
   assert(dst_alloc.type == 'register')
   assert(dst_alloc.count == 1)
-  emit(ctx, ir.mov(ir.tempreg(dst_alloc.first), ir.literal(0)))
+  emit(ctx, ir.mov(ir.register(dst_alloc.first), ir.literal(0)))
+end
+
+local function put_assignment_ll_copy_init(ctx, dst_var, src_var)
+  local dst_alloc = dst_var.allocation
+  local src_alloc = src_var.allocation
+  -- Punt, assume always a single register
+  assert(dst_alloc.type == 'register')
+  assert(dst_alloc.count == 1)
+  assert(src_alloc.type == 'register')
+  assert(src_alloc.count == 1)
+  local dst_reg = ir.register(dst_alloc.first)
+  local src_reg = ir.register(src_alloc.first)
+  emit(ctx, ir.mov(dst_reg, src_reg))
 end
 
 local function put_assignment_ll_move(ctx, dst_var, src_var)
   local dst_alloc = dst_var.allocation
   local src_alloc = src_var.allocation
   assert(src_alloc.type == 'register')
-  local src_reg = ir.tempreg(src_alloc.first)
+  local src_reg = ir.register(src_alloc.first)
   if dst_alloc.type == 'register' then
     -- Calculate destination register and move
-    local dst_reg = ir.tempreg(dst_alloc.first)
+    local dst_reg = ir.register(dst_alloc.first)
     emit(ctx, ir.mov(dst_reg, src_reg))
   elseif dst_alloc.type == 'argument' then
     -- This is a function argument -modification is strictly forbidden.
@@ -467,9 +498,9 @@ local function put_assignment(ctx, ast_lvalues, ast_expressions)
     if ast_lvalues[i].type == 'reference' then
       -- Create temporary variable to hold this expression
       temp_vars[i] = lang.variable(nil, expr_types[i], allocate_local(ctx, expr_types[i]))
-      local expr_reg = put_expression(ctx, ast_expressions[i])
+      local expr_var = put_expression(ctx, ast_expressions[i])
       -- Copy-initialize to expression value
-      put_assignment_ll_copy_init(ctx, temp_vars[i], expr_reg)
+      put_assignment_ll_copy_init(ctx, temp_vars[i], expr_var)
     end
   end
   -- Move temporary expression results into referential lvalues
@@ -487,9 +518,9 @@ local function put_assignment(ctx, ast_lvalues, ast_expressions)
       -- Declare this variable
       local lvalue_var = new_local_variable(ctx, ast_lvalues[i].name, lvalue_types[i])
       -- Evaluate expression
-      local expr_reg = put_expression(ctx, ast_expressions[i])
+      local expr_var = put_expression(ctx, ast_expressions[i])
       -- Copy-initialize
-      put_assignment_ll_copy_init(ctx, lvalue_var, expr_reg)
+      put_assignment_ll_copy_init(ctx, lvalue_var, expr_var)
     end
   end
 end
@@ -527,7 +558,7 @@ function put_call_assignment(ctx, lvalue_exprs, call_expr)
     -- Allocate new registers depending on allocation.
     if decl.allocation.type == 'register' then
       -- This lvalue has temporary allocation, so it's fair game to assign directly.
-      return_regs[i] = ir.tempreg(decl.allocation.first)
+      return_regs[i] = ir.register(decl.allocation.first)
     elseif decl.allocation.type == 'stack' then
       -- We'll have to store this value somewhere else, so allocate it a temporary.
       return_regs[i] = new_temp_reg(ctx)
@@ -562,7 +593,9 @@ function put_expression(ctx, expr)
 end
 
 function pet.integer(ctx, expr)
-  return expr.value
+  local var_z = new_temp_int64(ctx)
+  emit(ctx, ir.mov(ir.register(var_z.allocation.first), ir.literal(tonumber(expr.value))))
+  return var_z
 end
 
 function pet.negate(ctx, expr)
@@ -620,66 +653,91 @@ end
 function pet.logand(ctx, expr)
   local lab1 = new_label(ctx)
   local lab2 = new_label(ctx)
-  local reg_z = new_temp_reg(ctx)
-  local reg_x = put_expression(ctx, expr.expression_a)
+  local var_z = new_temp_int64(ctx)
+  local reg_z = ir.register(var_z.allocation.first)
+  local var_x = put_expression(ctx, expr.expression_a)
+  if not is_int64(var_x) then
+    report_error('Logical operator expects int64')
+  end
+  local reg_x = ir.register(var_x.allocation.first)
   -- If nonzero, jump to the evaluation of the next expression
   -- Otherwise, set reg_z to zero, and jump to end
   emit(ctx, ir.jnz(lab1, reg_x));
   emit(ctx, ir.mov(reg_z, 0));
   emit(ctx, ir.jmp(lab2));
   emit(ctx, ir.label(lab1))
-  local reg_y = put_expression(ctx, expr.expression_b)
+  local var_y = put_expression(ctx, expr.expression_b)
+  if not is_int64(var_y) then
+    report_error('Logical operator expects int64')
+  end
+  local reg_y = ir.register(var_y.allocation.first)
   -- Set reg_z to zero iff reg_y is zero
-  emit(ctx, ir.neq(reg_z, reg_y, 0))
+  emit(ctx, ir.neq(reg_z, reg_y, ir.literal(0)))
   emit(ctx, ir.label(lab2))
-  return reg_z
+  -- Our result is in var_z
+  return var_z
 end
 
 function pet.logor(ctx, expr)
   local lab1 = new_label(ctx)
   local lab2 = new_label(ctx)
-  local reg_z = new_temp_reg(ctx)
-  local reg_x = put_expression(ctx, expr.expression_a)
-  -- If zero, jump to the evaluation of the next expression
+  -- Create a new temporary for result
+  local var_z = new_temp_int64(ctx)
+  local reg_z = ir.register(var_z.allocation.first)
+  -- Put first expression, validate type
+  local var_x = put_expression(ctx, expr.expression_a)
+  if not is_int64(var_x) then
+    report_error('Logical operator expects int64')
+  end
+  local reg_x = ir.register(var_x.allocation.first)
+  -- If reg_x is zero, jump to the evaluation of the next expression
   -- Otherwise, set reg_z to one, and jump to end
   emit(ctx, ir.jz(lab1, reg_x));
   emit(ctx, ir.mov(reg_z, 1));
   emit(ctx, ir.jmp(lab2));
   emit(ctx, ir.label(lab1))
-  local reg_y = put_expression(ctx, expr.expression_b)
+  -- Put second expression, validate type
+  local var_y = put_expression(ctx, expr.expression_b)
+  if not is_int64(var_y) then
+    report_error('Logical operator expects int64')
+  end
+  local reg_y = ir.register(var_y.allocation.first)
   -- Set reg_z to zero iff reg_y is zero
-  emit(ctx, ir.neq(reg_z, reg_y, 0))
+  emit(ctx, ir.neq(reg_z, reg_y, ir.literal(0)))
   emit(ctx, ir.label(lab2))
-  -- Our result is in reg_z
-  return reg_z
+  -- Our result is in var_z
+  return var_z
 end
 
 function pet.lvalue(ctx, expr)
   -- This is an lvalue expression, so it must have a declaration
-  local decl = find_variable(ctx, expr.lvalue.name_path)
-  if decl.allocation.type == 'register' then
-    assert(decl.allocation.count == 1)
-    return ir.tempreg(decl.allocation.first)
-  elseif decl.allocation.type == 'argument' then
-    assert(decl.allocation.count == 1)
-    return ir.argreg(decl.allocation.first)
-  elseif decl.allocation.type == 'stack' then
-    -- Calculate address and store!
-    local reg_ptr = put_lvalue_expression(ctx, decl, expr.lvalue)
-    local reg_val = new_temp_reg(ctx)
-    emit(ctx, ir.ldr(reg_val, reg_ptr))
+  local base_var = find_variable(ctx, expr.lvalue.name_path)
+  if base_var.allocation.type == 'register' then
+    return base_var
+  elseif base_var.allocation.type == 'argument' then
+    return base_var
+  elseif base_var.allocation.type == 'stack' then
+    -- Create temporary variable to hold result of this expression
+    local expr_type = compute_lvalue_eval_type(ctx, expr.lvalue)
+    if not is_int64(expr_type) then
+      report_error('Lvalue expression must evaluate to int64')
+    end
+    local temp_var = lang.variable(nil, expr_type, allocate_local(ctx, expr_type))
+    -- Calculate lvalue address and load into temp space
+    local reg_ptr = put_lvalue_expression(ctx, base_var, expr.lvalue)
+    emit(ctx, ir.ldr(ir.register(temp_var.allocation.first), reg_ptr))
     -- Result is in new temporary
-    return reg_val
+    return temp_var
   else
-    error('Invalid declaration IR allocation type `'..decl.allocation.type..'`')
+    error('')
   end
 end
 
 function pet.call(ctx, expr)
   -- Function calls only yield their first return value to expressions
-  local dst_reg = new_temp_reg(ctx)
-  put_call(ctx, expr.name_path, expr.arguments, { dst_reg })
-  return dst_reg
+  local dst_var = new_temp_int64(ctx)
+  put_call(ctx, expr.name_path, expr.arguments, { dst_var })
+  return dst_var
 end
 
 -- Generates IR code which implements an AST statement.
@@ -726,7 +784,13 @@ pst['return'] = function(ctx, ast_stmt)
   -- Prepare for multiple assignment
   local n = #ctx.ast_function.returns
   for i=1,n do
-    emit(ctx, ir.mov(ir.retreg(i-1), put_expression(ctx, ast_stmt.expressions[i])))
+    io.write('PUNTING ON RETURN\n')
+    --[[
+    local tmp_var = put_expression(ctx, ast_stmt.expressions[i])
+    io.write('reg:\n')
+    pprint(reg)
+    emit(ctx, ir.mov(ir.retreg(i-1), reg))
+    ]]
   end
   emit(ctx, ir.ret())
 end
