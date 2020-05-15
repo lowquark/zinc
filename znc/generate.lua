@@ -94,7 +94,7 @@ local function operand(ctx, ir_name)
   elseif typestr == 's' then
     -- Stack register
     -- Find the local's entry in the subroutine
-    local local_data = ctx.subroutine.locals[intval]
+    local local_data = ctx.subroutine.locals[intval+1]
     if not local_data then
       error('Local '..ir_name..' is not defined!')
     end
@@ -535,7 +535,7 @@ function emit_stmt.stackaddr(ctx, ir_stmt)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   assert(type_z ~= 'literal', 'Invalid instruction')
   local num_spills = ctx.subroutine.size_registers - #oprand_reg_t
-  local ir_alloc = ctx.subroutine.locals[ir_stmt.index]
+  local ir_alloc = ctx.subroutine.locals[ir_stmt.index+1]
   local rbp_offset_bytes = -8*(num_spills + ir_alloc.offset + ir_alloc.size)
   if type_z == 'register' then
     emit(ctx, 'movq %rbp, '..op_z)

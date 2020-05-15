@@ -17,7 +17,7 @@ end
 
 ----------------------------------------------------------------------------------------------------
 -- Statement construction
-
+--
 -- Unless otherwise specified, table arguments are copied
 
 local ir = {}
@@ -313,74 +313,35 @@ function ir.stackaddr(reg_z, index)
 end
 
 ----------------------------------------------------------------------------------------------------
--- ir.subroutine - Subroutine definition and builder
+-- ir.subroutine - Subroutine definition
 
 local subroutine_methods = { }
 local subroutine_meta = { __index = subroutine_methods }
 
-function subroutine_methods.alloc_register(self, count)
-  assert(type(count) == 'number')
-  -- Simply return the next n temporaries
-  local first = self.size_registers
-  local alloc = { type = 'register', first = first, count = count }
-  -- Track high-water mark
-  self.size_registers = first + count
-  return alloc
-end
-
-function subroutine_methods.alloc_stack(self, offset, size)
-  assert(type(offset) == 'number')
-  assert(type(size) == 'number')
-  -- Return the allocation exactly as specified, so that the compiler may re-use old stack space
-  local alloc = { type = 'stack', id = #self.locals + 1, offset = offset, size = size }
-  -- Remember this block for use in statements
-  self.locals[#self.locals+1] = alloc
-  -- Track stack's high-water mark
-  if offset + size > self.size_stack then
-    self.size_stack = offset + size
-  end
-  return alloc
-end
-
-function subroutine_methods.alloc_argument(self, count)
-  assert(type(count) == 'number')
-  -- Simply return the next n argument registers
-  local first = self.size_arguments
-  local alloc = { type = 'argument', first = first, count = count }
-  -- Track high-water mark
-  self.size_arguments = first + count
-  return alloc
-end
-
-function subroutine_methods.alloc_return(self, count)
-  assert(type(count) == 'number')
-  -- Simply return the next n return registers
-  local first = self.size_returns
-  local alloc = { type = 'return', first = first, count = count }
-  -- Track high-water mark
-  self.size_returns = first + count
-  return alloc
-end
-
-function subroutine_methods.add_statement(self, stmt)
-  assert(type(stmt) == 'table')
-  self.statements[#self.statements+1] = stmt
-  return stmt
-end
-
-local function subroutine_new(name)
+function ir.subroutine(name)
   assert(type(name) == 'string')
   local subr = { name = name,
                  locals = { },
-                 size_arguments = 0,
-                 size_returns = 0,
                  size_stack = 0,
                  size_registers = 0,
+                 size_arguments = 0,
                  statements = { } }
   return setmetatable(subr, subroutine_meta)
 end
 
-ir.subroutine = subroutine_new
+----------------------------------------------------------------------------------------------------
+-- ir.program - IR program definition
+
+local program_methods = { }
+local program_meta = { __index = program_methods }
+
+function ir.program(main_module)
+  local prog = { subroutines = { }, main_module = main_module }
+  return setmetatable(prog, program_meta)
+end
+
+----------------------------------------------------------------------------------------------------
+-- Construction helpers
 
 -- Creates a new local variable in the given ir subroutine
 --   subr   : ir.subroutine
@@ -388,8 +349,12 @@ ir.subroutine = subroutine_new
 --   size   : integer variable size
 --   -> IR identifier string
 function ir.create_local(subr, offset, size)
-  local next_idx = #subr.locals + 1
-  subr.locals[next_idx] = { offset = offset, size = size }
+  local next_idx = #subr.locals
+  subr.locals[next_idx+1] = { offset = offset, size = size }
+  -- Track high water mark
+  if offset + size > subr.size_stack then
+    subr.size_stack = offset + size
+  end
   -- Return the IR identifier for this local
   return ir.localid(next_idx)
 end
@@ -420,22 +385,12 @@ function ir.add_statement(subr, stmt)
   stmts[#stmts + 1] = stmt
 end
 
-----------------------------------------------------------------------------------------------------
--- ir.program - IR program definition
-
-local program_methods = { }
-local program_meta = { __index = program_methods }
-
-local function program_new(main_module)
-  local prog = { subroutines = { }, main_module = main_module }
-  return setmetatable(prog, program_meta)
-end
-
-ir.program = program_new
-
-function ir.add_subroutine(ir_prog, ir_subr)
-  table.insert(ir_prog.subroutines, ir_subr)
-  return ir_subr
+-- Appends a subroutine to the given program
+--   prog : ir.program
+--   subr : ir.subroutine
+function ir.add_subroutine(prog, subr)
+  table.insert(prog.subroutines, subr)
+  return subr
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -602,7 +557,7 @@ local function dump_statement(stmt)
 end
 
 function ir.dump_subroutine(subr)
-  io.write('sub '..subr.name..' : '..subr.size_arguments..' -> '..subr.size_returns..'\n')
+  io.write('sub '..subr.name..' ('..subr.size_arguments..')\n')
   for i,stmt in ipairs(subr.statements) do
     dump_statement(stmt)
   end

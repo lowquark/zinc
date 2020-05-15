@@ -20,7 +20,7 @@ local function plz(n, singular, plural)
 end
 
 -- Reports a compilation error and aborts
-local function report_error(str)
+local function report_error(ctx, str)
   io.write('Compilation error on line ?, col ?: '..str..'\n')
   io.write(debug.traceback())
   os.exit(4)
@@ -111,7 +111,7 @@ end
 --   -> lc.variable
 local function new_named_local(ctx, name, var_type)
   if ctx.local_scope[name] then
-    report_error('`'..name..'` was already declared in this scope.')
+    report_error(ctx, '`'..name..'` was already declared in this scope.')
   else
     -- Allocate this variable
     local var = new_local(ctx, var_type)
@@ -129,15 +129,13 @@ end
 --   -> lc.function_
 local function new_function(ctx, name, ast_func, ir_subr)
   if ctx.module_scope[name] then
-    report_error('Function `'..name..'` has already been declared in this scope.')
+    report_error(ctx, 'Function `'..name..'` has already been declared in this scope.')
   else
     local new_decl = lc.function_(name, ast_func, ir_subr)
     ctx.module_scope[name] = new_decl
     return new_decl
   end
 end
-
---[=[ XXX: Roped off, unused
 
 -- Returns the declaration corresponding to the named variable
 --   ctx       : Compiler context
@@ -151,9 +149,11 @@ local function find_variable(ctx, name_path)
   if decl then
     return decl
   else
-    report_error('`'..name_path..'` was not found in this scope.')
+    report_error(ctx, '`'..name_path..'` was not found in this scope.')
   end
 end
+
+--[=[ XXX: Roped off, unused
 
 -- Returns the declaration corresponding to the named function
 --   ctx       : Compiler context
@@ -163,7 +163,7 @@ local function find_function(ctx, name_path)
   local name_str = tostring(name_path)
   local func_decl = ctx.module_scope[name_str]
   if not func_decl then
-    report_error('Function `'..name_str..'` was not found in this scope.')
+    report_error(ctx, 'Function `'..name_str..'` was not found in this scope.')
   end
   return func_decl
 end
@@ -172,7 +172,7 @@ end
 
 local function compute_type(ctx, ast_type_spec)
   if ast_type_spec.name_path[#ast_type_spec.name_path] == 'int64' then
-    return lc.type_int64
+    return lc.variable_type(false, lc.type_int64, false)
   else
     error('Cannot compute type!')
   end
@@ -197,10 +197,18 @@ function emit(ctx, stmt)
 end
 
 -- Call when only accepting int64 :p
-local function accept_only_int64_reg(slot)
-  if not ( slot.variable_type.hard_type == lc.type_int64 and
-           slot.variable_type.reference == false ) then
-    report_error('Only accepting int64 at this time')
+local function accept_only_int64(ctx, var)
+  if not ( var.variable_type.hard_type == lc.type_int64 and
+           var.variable_type.reference == false ) then
+    report_error(ctx, 'Only accepting int64 at this time')
+  end
+end
+
+function find_or_declare_lvalue(ctx, ast_lvalue)
+  if ast_lvalue.type == 'declaration' then
+    return new_named_local(ctx, ast_lvalue.name, compute_type(ctx, ast_lvalue.type_specifier))
+  elseif ast_lvalue.type == 'reference' then
+    return find_variable(ctx, ast_lvalue.name_path)
   end
 end
 
@@ -210,11 +218,11 @@ end
 function put_unop_expression(ctx, expr, op)
   -- Evaluate subexpression
   local expr_var = put_expression(ctx, expr)
-  accept_only_int64_reg(expr_var);
+  accept_only_int64(ctx, expr_var);
 
   -- Create new slot
   local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
-  accept_only_int64_reg(out_var); 
+  accept_only_int64(ctx, out_var); 
 
   -- Submit, emit
   emit(ctx, op(out_var.ir_id, expr_var.ir_id))
@@ -225,15 +233,15 @@ end
 function put_binop_expression(ctx, expr_a, expr_b, op)
   -- Evaluate subexpression
   local expr_a_var = put_expression(ctx, expr_a)
-  accept_only_int64_reg(expr_a_var); 
+  accept_only_int64(ctx, expr_a_var); 
 
   -- Evaluate subexpression
   local expr_b_var = put_expression(ctx, expr_b)
-  accept_only_int64_reg(expr_b_var); 
+  accept_only_int64(ctx, expr_b_var); 
 
   -- Create new slot
   local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
-  accept_only_int64_reg(out_var); 
+  accept_only_int64(ctx, out_var); 
 
   -- Submit, emit
   emit(ctx, op(out_var.ir_id, expr_a_var.ir_id, expr_b_var.ir_id))
@@ -247,11 +255,11 @@ function put_logical_expression(ctx, expr_a, expr_b, mode)
 
   -- Create a new slot for result
   local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
-  accept_only_int64_reg(out_var); 
+  accept_only_int64(ctx, out_var); 
 
   -- Evaluate subexpression A
   local expr_a_var = put_expression(ctx, expr_a)
-  accept_only_int64_reg(expr_a_var); 
+  accept_only_int64(ctx, expr_a_var); 
 
   local reg_out = out_var.ir_id;
   local reg_a = expr_a_var.ir_id;
@@ -277,7 +285,7 @@ function put_logical_expression(ctx, expr_a, expr_b, mode)
 
   -- Evaluate subexpression B
   local expr_b_var = put_expression(ctx, expr_b)
-  accept_only_int64_reg(expr_b_var); 
+  accept_only_int64(ctx, expr_b_var); 
 
   local reg_b = expr_b_var.ir_id;
 
@@ -304,7 +312,6 @@ end
 
 function put_expression_h.integer(ctx, expr)
   local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
-  accept_only_int64_reg(out_var); 
   -- Always int64, so just mov this value
   emit(ctx, ir.mov(out_var.ir_id, ir.literal(tonumber(expr.value))))
   return out_var
@@ -371,6 +378,8 @@ function put_expression_h.logor(ctx, expr)
 end
 
 function put_expression_h.lvalue(ctx, expr)
+  -- TODO: Index expressions!
+  return find_variable(ctx, expr.lvalue.name_path)
 end
 
 function put_expression_h.call(ctx, expr)
@@ -379,13 +388,36 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Statement generation
 
+function emit_multi_copy(ctx, dst_vars, src_vars)
+  for k=1,#dst_vars do
+    accept_only_int64(ctx, dst_vars[k])
+    accept_only_int64(ctx, src_vars[k])
+    emit(ctx, ir.mov(dst_vars[k].ir_id, src_vars[k].ir_id))
+  end
+end
+
+function emit_multi_move(ctx, dst_vars, src_vars)
+  for k=1,#dst_vars do
+    accept_only_int64(ctx, dst_vars[k])
+    accept_only_int64(ctx, src_vars[k])
+    emit(ctx, ir.mov(dst_vars[k].ir_id, src_vars[k].ir_id))
+  end
+end
+
+function emit_multi_init(ctx, dst_vars)
+  for k,dst_var in ipairs(dst_vars) do
+    accept_only_int64(ctx, dst_var)
+    emit(ctx, ir.mov(dst_var.ir_id, ir.literal(0)))
+  end
+end
+
 -- Generates IR code which implements an AST statement.
 function put_statement(ctx, ast_stmt)
   local h = put_statement_h[ast_stmt.type]
   if h then
     h(ctx, ast_stmt)
   else
-    report_error('Unknown AST statement type `'..ast_stmt.type..'`')
+    report_error(ctx, 'Unknown AST statement type `'..ast_stmt.type..'`')
   end
 end
 
@@ -397,7 +429,7 @@ put_statement_h['if'] = function(ctx, ast_stmt)
 
     -- Put conditional expression into new temporary
     local expr_var = put_expression(ctx, ast_stmt.expression)
-    accept_only_int64_reg(expr_var); 
+    accept_only_int64(ctx, expr_var); 
     emit(ctx, ir.jz(LABEL_ELSE, expr_var.ir_id))
 
     -- Put if statement body
@@ -414,7 +446,7 @@ put_statement_h['if'] = function(ctx, ast_stmt)
 
     -- Put conditional expression into new temporary
     local expr_var = put_expression(ctx, ast_stmt.expression)
-    accept_only_int64_reg(expr_var); 
+    accept_only_int64(ctx, expr_var); 
     emit(ctx, ir.jz(LABEL_END, expr_var.ir_id))
 
     -- Put if statement body
@@ -427,7 +459,7 @@ put_statement_h['return'] = function(ctx, ast_stmt)
   -- Assign function results to output argument registers
   for i,expr in ipairs(ast_stmt.expressions) do
     local expr_var = put_expression(ctx, expr)
-    accept_only_int64_reg(expr_var); 
+    accept_only_int64(ctx, expr_var); 
     emit(ctx, ir.mov(ir.argumentid(i - 1), expr_var.ir_id))
   end
   -- Don't forget to emit actual return statement
@@ -435,6 +467,37 @@ put_statement_h['return'] = function(ctx, ast_stmt)
 end
 
 function put_statement_h.assignment(ctx, ast_stmt)
+  local dst_vars = { }
+  local src_vars = { }
+  for i,ast_lvalue in ipairs(ast_stmt.lvalues) do
+    dst_vars[i] = find_or_declare_lvalue(ctx, ast_lvalue)
+  end
+  for i,expr in ipairs(ast_stmt.expressions) do
+    src_vars[i] = put_expression(ctx, expr)
+  end
+  if #ast_stmt.lvalues == #ast_stmt.expressions then
+    if #dst_vars ~= 1 then
+      local tmp_vars = { }
+      for i,dst_var in ipairs(dst_vars) do
+        tmp_vars[i] = new_local(ctx, dst_var.variable_type)
+      end
+      emit_multi_copy(ctx, tmp_vars, src_vars)
+      emit_multi_move(ctx, dst_vars, tmp_vars)
+    else
+      emit_multi_copy(ctx, dst_vars, src_vars)
+    end
+  elseif #ast_stmt.expressions == 0 then
+    emit_multi_init(ctx, dst_vars)
+  elseif #ast_stmt.expressions == 1 then
+    local call_expr = ast_stmt.expressions[1]
+    if call_expr.type == 'call' then
+      error('put call assignment')
+    else
+      report_error(ctx, 'Invalid assignment')
+    end
+  else
+    report_error(ctx, 'Invalid assignment')
+  end
 end
 
 function put_statement_h.block(ctx, ast_stmt)
