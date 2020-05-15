@@ -22,39 +22,28 @@ end
 
 local ir = {}
 
+-- Returns an identifier for a literal number
 function ir.literal(num)
   assert(type(num) == 'number')
   return tostring(num)
 end
 
-function ir.register(index)
+-- Returns an identifier for the stack (object) at the given index
+function ir.localid(index)
+  assert(type(index) == 'number')
+  return 's'..tostring(index)
+end
+
+-- Returns an identifier for the register at the given index
+function ir.registerid(index)
   assert(type(index) == 'number')
   return 'r'..index
 end
 
-function ir.argreg(index)
+-- Returns an identifier for the argument register at the given index
+function ir.argumentid(index)
   assert(type(index) == 'number')
   return 'a'..index
-end
-
-function ir.retreg(index)
-  assert(type(index) == 'number')
-  return 'b'..index
-end
-
-function ir.isregister(reg)
-  assert(type(reg) == 'string')
-  return reg:sub(1,1) == 'r'
-end
-
-function ir.isargreg(reg)
-  assert(type(reg) == 'string')
-  return reg:sub(1,1) == 'a'
-end
-
-function ir.isretreg(reg)
-  assert(type(reg) == 'string')
-  return reg:sub(1,1) == 'b'
 end
 
 function ir.mov(reg_z, reg_x)
@@ -393,25 +382,61 @@ end
 
 ir.subroutine = subroutine_new
 
+-- Creates a new local variable in the given ir subroutine
+--   subr   : ir.subroutine
+--   offset : integer stack offset
+--   size   : integer variable size
+--   -> IR identifier string
+function ir.create_local(subr, offset, size)
+  local next_idx = #subr.locals + 1
+  subr.locals[next_idx] = { offset = offset, size = size }
+  -- Return the IR identifier for this local
+  return ir.localid(next_idx)
+end
+
+-- Creates a new register in the given ir subroutine
+--   subr : ir.subroutine
+--   -> IR identifier string
+function ir.create_register(subr)
+  local next_idx = subr.size_registers + 1
+  subr.size_registers = next_idx
+  return ir.registerid(next_idx)
+end
+
+-- Creates a new argument register in the given ir subroutine
+--   subr : ir.subroutine
+--   -> IR identifier string
+function ir.create_argument(subr)
+  local next_idx = subr.size_arguments + 1
+  subr.size_arguments = next_idx
+  return ir.argumentid(next_idx)
+end
+
+-- Appends an instruction to the statements of the given subroutine
+--   subr : ir.subroutine
+--   stmt : ir.statement
+function ir.add_statement(subr, stmt)
+  local stmts = subr.statements
+  stmts[#stmts + 1] = stmt
+end
+
 ----------------------------------------------------------------------------------------------------
--- ir.program - Program definition and builder
--- TODO: I think builder should be separate
+-- ir.program - IR program definition
 
 local program_methods = { }
 local program_meta = { __index = program_methods }
 
-function program_methods.add_subroutine(self, name)
-  local ir_subr = subroutine_new(name)
-  table.insert(self.subroutines, ir_subr)
-  return ir_subr
-end
-
-local function program_new()
-  local prog = { subroutines = { } }
+local function program_new(main_module)
+  local prog = { subroutines = { }, main_module = main_module }
   return setmetatable(prog, program_meta)
 end
 
 ir.program = program_new
+
+function ir.add_subroutine(ir_prog, ir_subr)
+  table.insert(ir_prog.subroutines, ir_subr)
+  return ir_subr
+end
 
 ----------------------------------------------------------------------------------------------------
 -- Pretty printing - Statement to string conversion

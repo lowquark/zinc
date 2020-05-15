@@ -55,7 +55,7 @@ local function max_lifetimes(subr)
     if ir_stmt.return_regs then
       -- This statement overwrites multiple registers
       for i,reg in ipairs(ir_stmt.return_regs) do
-        if not start_idx[reg] and ir.isregister(reg) then
+        if not start_idx[reg] and ir.isreg(reg) then
           start_idx[reg] = k
           regs_by_start[#regs_by_start+1] = reg
         end
@@ -63,7 +63,7 @@ local function max_lifetimes(subr)
     elseif ir_stmt.register_z then
       -- This statement only overwrites a single register
       local reg_z = ir_stmt.register_z
-      if not start_idx[reg_z] and ir.isregister(reg_z) then
+      if not start_idx[reg_z] and ir.isreg(reg_z) then
         start_idx[reg_z] = k
         regs_by_start[#regs_by_start+1] = reg_z
       end
@@ -76,23 +76,23 @@ local function max_lifetimes(subr)
     local reg_x = ir_stmt.register_x
     local reg_y = ir_stmt.register_y
     if reg_w then
-      if not end_idx[reg_w] and ir.isregister(reg_w) then
+      if not end_idx[reg_w] and ir.isreg(reg_w) then
         end_idx[reg_w] = k
       end
     end
     if reg_x then
-      if not end_idx[reg_x] and ir.isregister(reg_x) then
+      if not end_idx[reg_x] and ir.isreg(reg_x) then
         end_idx[reg_x] = k
       end
     end
     if reg_y then
-      if not end_idx[reg_y] and ir.isregister(reg_y) then
+      if not end_idx[reg_y] and ir.isreg(reg_y) then
         end_idx[reg_y] = k
       end
     end
     if ir_stmt.argument_regs then
       for i,reg in ipairs(ir_stmt.argument_regs) do
-        if not end_idx[reg] and ir.isregister(reg) then
+        if not end_idx[reg] and ir.isreg(reg) then
           end_idx[reg] = k
         end
       end
@@ -180,7 +180,7 @@ local function lsra(subr, num_target_regs)
   -- Initialize list of free "hardware" registers.
   local free_regs = { }
   for k=1,num_target_regs do
-    free_regs[k] = ir.register(k-1)
+    free_regs[k] = ir.reg(k-1)
   end
   -- Stack index for the next spilled register
   local spill_index = num_target_regs
@@ -191,7 +191,7 @@ local function lsra(subr, num_target_regs)
     if #free_regs == 0 then
       -- There's no free hardware registers, so we have to spill to the stack. We do this by
       -- allocating a temporary register that is greater than or equal to `num_target_regs`
-      local new_stack_reg = ir.register(spill_index)
+      local new_stack_reg = ir.reg(spill_index)
       spill_index = spill_index + 1
       -- If the last active interval ends later than this one does, spill it to the stack and steal
       -- its register. Otherwise, spill this one to the stack. Hence, this interval has register
