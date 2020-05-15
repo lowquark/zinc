@@ -5,6 +5,7 @@
 
 local ir = require 'ir'
 local lsra = require 'lsra'
+local pprint = require 'pprint'
 
 -- TODO: Large immediate values
 
@@ -16,10 +17,10 @@ local function list_contains(t, v)
 end
 
 -- These registers are used for memory reads and backing up values
---   %rax
---   %rcx
+--   %rax  - There's allegedly optimized instructions for this one
+--   %rcx  - Shift operations always clobber this one
 
--- These registers are used to store IR temporaries
+-- These registers directly map to IR registers
 --   %rbx
 --   %rdx
 --   %r8
@@ -27,18 +28,16 @@ end
 --   %r10
 --   %r11
 
--- (o)perand (t)emporary (r)egister (t)able
-local otrt = {
-  '%rbx',
-  '%rdx',
-  '%r8',
-  '%r9',
-  '%r10',
-  '%r11',
+local oprand_reg_t = {
+  '%rbx', -- <=> r0
+  '%rdx', -- <=> r1
+  '%r8',  -- <=> r2
+  '%r9',  -- <=> r3
+  '%r10', -- <=> r4
+  '%r11', -- <=> r5
 }
 
--- (r)egister (b)yte (f)orm (t)able
-local rbft = {
+local reg_byte_form_t = {
   ['%rbx'] = '%bl',
   ['%rdx'] = '%dl',
   ['%r8'] = '%r8b',
@@ -81,52 +80,44 @@ local emit_stmt = {}
 -- Computes the x86 instruction operand corresponding to the given IR register/literal
 -- Returns the x86 operand and its corresponding type
 local function operand(ctx, ir_name)
-  local typestr = string.sub(ir_name, 1, 1)
+  -- IR operands always come like this
+  -- TODO: This belongs in ir, I think!
+  local typestr, intval = string.match(ir_name, '([rsa]?)(%d+)')
+  intval = tonumber(intval)
+
   if typestr == 'r' then
     -- Regular register
-    local index = tonumber(string.match(ir_name, 'r(%d+)'))
-    if not index then
-      error('Invalid IR temporary register `'..ir_name..'`')
+    if intval < #oprand_reg_t then
+      -- Use basic hardware register operand
+      return oprand_reg_t[intval+1], 'register'
     end
-    if index < #otrt then
-      -- Use hardware register
-      return otrt[index+1], 'register'
-    else
-      -- Use stack "register"
-      local rbp_offset_bytes = -8*(index - #otrt + 1)
-      return rbp_offset_bytes..'(%rbp)', 'memory'
+  elseif typestr == 's' then
+    -- Stack register
+    -- Find the local's entry in the subroutine
+    local local_data = ctx.subroutine.locals[intval]
+    if not local_data then
+      error('Local '..ir_name..' is not defined!')
     end
+    -- Use rbp-relative operand corresponding to transformed stack location
+    local rbp_offset_bytes = -8*(local_data.offset + local_data.size)
+    return rbp_offset_bytes..'(%rbp)', 'memory'
   elseif typestr == 'a' then
     -- Argument register
-    local index = tonumber(string.match(ir_name, 'a(%d+)'))
-    if not index then
-      error('Invalid IR argument register `'..ir_name..'`')
-    end
-    local rbp_offset_bytes = 8*(ctx.subroutine.size_arguments - index + 1)
+    -- Use rbp-relative operand corresponding to argument's stack location
+    local rbp_offset_bytes = 8*(ctx.subroutine.size_arguments - intval + 1)
     return rbp_offset_bytes..'(%rbp)', 'memory'
-  elseif typestr == 'b' then
-    -- Return value register
-    local index = tonumber(string.match(ir_name, 'b(%d+)'))
-    if not index then
-      error('Invalid IR return register `'..ir_name..'`')
-    end
-    local size_io = ctx.subroutine.size_arguments + ctx.subroutine.size_returns
-    local rbp_offset_bytes = 8*(size_io - index + 1)
-    return rbp_offset_bytes..'(%rbp)', 'memory'
-  else
-    local integer = tonumber(ir_name)
-    if integer then
-      return '$'..integer, 'literal'
-    else
-      error('Failed to generate operand for `'..ir_name..'`')
-    end
+  elseif intval then
+    -- Literal
+    return '$'..intval, 'literal'
   end
+
+  error('Failed to generate operand for `'..ir_name..'`')
 end
 
 -- Computes the least-significant-byte form of the given x86 operand
 local function reg_byte_form(op, type)
   if type == 'register' then
-    local r = rbft[op]
+    local r = reg_byte_form_t[op]
     if not r then
       error('Register byte form for `'..op..'` not yet set')
     end
@@ -459,8 +450,8 @@ function emit_stmt.call(ctx, ir_stmt)
   -- Save all possibly clobbered registers
   -- TODO: Only save live registers!
   local saved_regs = { }
-  for i=1,#otrt do
-    local reg = otrt[i]
+  for i=1,#oprand_reg_t do
+    local reg = oprand_reg_t[i]
     if not list_contains(return_ops, reg) then
       emit_push(ctx, reg, 'register')
       saved_regs[#saved_regs+1] = reg
@@ -543,7 +534,7 @@ end
 function emit_stmt.stackaddr(ctx, ir_stmt)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   assert(type_z ~= 'literal', 'Invalid instruction')
-  local num_spills = ctx.subroutine.size_registers - #otrt
+  local num_spills = ctx.subroutine.size_registers - #oprand_reg_t
   local ir_alloc = ctx.subroutine.locals[ir_stmt.index]
   local rbp_offset_bytes = -8*(num_spills + ir_alloc.offset + ir_alloc.size)
   if type_z == 'register' then
@@ -557,7 +548,7 @@ function emit_stmt.stackaddr(ctx, ir_stmt)
 end
 
 local function emit_subroutine(ctx, ir_subr)
-  local num_spills = ir_subr.size_registers - #otrt
+  local num_spills = ir_subr.size_registers - #oprand_reg_t
   -- Initialize context
   ctx.stack_index = num_spills
   ctx.subroutine = ir_subr
@@ -592,10 +583,12 @@ local function generate(ir_prog, outfile)
   emit_line(ctx)
 
   for i,ir_subr in ipairs(ir_prog.subroutines) do
+    --[=[ Bypass register allocation for great testing
     -- Allocate hardware registers
-    lsra(ir_subr, #otrt)
+    lsra(ir_subr, #oprand_reg_t)
     -- Print to console for shits and giggles
     ir.dump_subroutine(ir_subr)
+    ]=]
     -- Generate code
     ctx.subroutine_id = i
     emit_subroutine(ctx, ir_subr)
