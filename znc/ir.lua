@@ -46,6 +46,12 @@ function ir.argumentid(index)
   return 'a'..index
 end
 
+-- Returns an identifier for the return register at the given index
+function ir.returnid(index)
+  assert(type(index) == 'number')
+  return 'b'..index
+end
+
 function ir.mov(reg_z, reg_x)
   assert(type(reg_z) == 'string')
   assert(type(reg_x) == 'string')
@@ -325,6 +331,7 @@ function ir.subroutine(name)
                  size_stack = 0,
                  size_registers = 0,
                  size_arguments = 0,
+                 size_returns = 0,
                  statements = { } }
   return setmetatable(subr, subroutine_meta)
 end
@@ -363,8 +370,8 @@ end
 --   subr : ir.subroutine
 --   -> IR identifier string
 function ir.create_register(subr)
-  local next_idx = subr.size_registers + 1
-  subr.size_registers = next_idx
+  local next_idx = subr.size_registers
+  subr.size_registers = next_idx + 1
   return ir.registerid(next_idx)
 end
 
@@ -372,9 +379,18 @@ end
 --   subr : ir.subroutine
 --   -> IR identifier string
 function ir.create_argument(subr)
-  local next_idx = subr.size_arguments + 1
-  subr.size_arguments = next_idx
+  local next_idx = subr.size_arguments
+  subr.size_arguments = next_idx + 1
   return ir.argumentid(next_idx)
+end
+
+-- Creates a new return register in the given ir subroutine
+--   subr : ir.subroutine
+--   -> IR identifier string
+function ir.create_return(subr)
+  local next_idx = subr.size_returns
+  subr.size_returns = next_idx + 1
+  return ir.returnid(next_idx)
 end
 
 -- Appends an instruction to the statements of the given subroutine
@@ -390,7 +406,12 @@ end
 --   subr : ir.subroutine
 function ir.add_subroutine(prog, subr)
   table.insert(prog.subroutines, subr)
+  prog.subroutines[subr.name] = subr
   return subr
+end
+
+function ir.find_subroutine(prog, name)
+  return prog.subroutines[name]
 end
 
 ----------------------------------------------------------------------------------------------------

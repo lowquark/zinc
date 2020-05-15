@@ -82,7 +82,7 @@ local emit_stmt = {}
 local function operand(ctx, ir_name)
   -- IR operands always come like this
   -- TODO: This belongs in ir, I think!
-  local typestr, intval = string.match(ir_name, '([rsa]?)(%d+)')
+  local typestr, intval = string.match(ir_name, '([rsab]?)(%d+)')
   intval = tonumber(intval)
 
   if typestr == 'r' then
@@ -105,6 +105,12 @@ local function operand(ctx, ir_name)
     -- Argument register
     -- Use rbp-relative operand corresponding to argument's stack location
     local rbp_offset_bytes = 8*(ctx.subroutine.size_arguments - intval + 1)
+    return rbp_offset_bytes..'(%rbp)', 'memory'
+  elseif typestr == 'b' then
+    -- Argument register
+    -- Use rbp-relative operand corresponding to argument's stack location
+    local rbp_offset_bytes = 8*(ctx.subroutine.size_arguments +
+                                ctx.subroutine.size_returns - intval + 1)
     return rbp_offset_bytes..'(%rbp)', 'memory'
   elseif intval then
     -- Literal
@@ -433,10 +439,13 @@ function emit_stmt.ldr(ctx, ir_stmt)
 end
 
 function emit_stmt.call(ctx, ir_stmt)
+  local target_sub = ir.find_subroutine(ctx.program, ir_stmt.name)
+
   local return_ops = { }
   local return_types = { }
   local argument_ops = { }
   local argument_types = { }
+
   for i,reg in ipairs(ir_stmt.return_regs) do
     if reg == '~' then
       return_ops[i], return_types[i] = nil, nil
@@ -444,9 +453,11 @@ function emit_stmt.call(ctx, ir_stmt)
       return_ops[i], return_types[i] = operand(ctx, reg)
     end
   end
+
   for i,reg in ipairs(ir_stmt.argument_regs) do
     argument_ops[i], argument_types[i] = operand(ctx, reg)
   end
+
   -- Save all possibly clobbered registers
   -- TODO: Only save live registers!
   local saved_regs = { }
@@ -457,19 +468,23 @@ function emit_stmt.call(ctx, ir_stmt)
       saved_regs[#saved_regs+1] = reg
     end
   end
+
+  -- Allocate stack argument space
   local arg_stack_idx = ctx.stack_index
   local input_size = #ir_stmt.return_regs + #ir_stmt.argument_regs
   if input_size > 0 then
-    -- Allocate stack argument space
     emit_stack_alloc(ctx, input_size)
   end
+
   -- Push arguments
   for i=1,#argument_ops do
     local rbp_offset_bytes = -8*(arg_stack_idx + i + #ir_stmt.return_regs)
     emit_mov(ctx, argument_ops[i], argument_types[i], rbp_offset_bytes..'(%rbp)', 'memory')
   end
+
   -- Emit actual call
   emit(ctx, 'call '..ir_stmt.name)
+
   -- Grab return values
   for i=1,#ir_stmt.return_regs do
     if return_ops[i] then
@@ -477,10 +492,12 @@ function emit_stmt.call(ctx, ir_stmt)
       emit_mov(ctx, rbp_offset_bytes..'(%rbp)', 'memory', return_ops[i], return_types[i])
     end
   end
+
+  -- Deallocate stack argument space
   if input_size > 0 then
-    -- Deallocate stack argument space
     emit_stack_dealloc(ctx, input_size)
   end
+
   -- Restore all previously pushed registers
   for i=#saved_regs,1,-1 do
     emit_pop(ctx, saved_regs[i], 'register')
@@ -534,9 +551,8 @@ end
 function emit_stmt.stackaddr(ctx, ir_stmt)
   local op_z, type_z = operand(ctx, ir_stmt.register_z)
   assert(type_z ~= 'literal', 'Invalid instruction')
-  local num_spills = ctx.subroutine.size_registers - #oprand_reg_t
   local ir_alloc = ctx.subroutine.locals[ir_stmt.index+1]
-  local rbp_offset_bytes = -8*(num_spills + ir_alloc.offset + ir_alloc.size)
+  local rbp_offset_bytes = -8*(ir_alloc.offset + ir_alloc.size)
   if type_z == 'register' then
     emit(ctx, 'movq %rbp, '..op_z)
     emit(ctx, 'addq $'..rbp_offset_bytes..', '..op_z)
@@ -548,10 +564,9 @@ function emit_stmt.stackaddr(ctx, ir_stmt)
 end
 
 local function emit_subroutine(ctx, ir_subr)
-  local num_spills = ir_subr.size_registers - #oprand_reg_t
   -- Initialize context
-  ctx.stack_index = num_spills
   ctx.subroutine = ir_subr
+  ctx.stack_index = 0
   -- Emit header
   emit(ctx, '.globl '..ir_subr.name)
   emit(ctx, '.type '..ir_subr.name..', @function')
@@ -559,7 +574,7 @@ local function emit_subroutine(ctx, ir_subr)
   emit_prologue(ctx)
   -- Reserve stack space for this function (part of the prologue, really)
   if ir_subr.size_stack > 0 then
-    emit_stack_alloc(ctx, num_spills + ir_subr.size_stack)
+    emit_stack_alloc(ctx, ir_subr.size_stack)
   end
   -- Emit statements
   for i,ir_stmt in ipairs(ir_subr.statements) do
@@ -577,6 +592,7 @@ end
 -- XXX: This modifies ir_prog!
 local function generate(ir_prog, outfile)
   local ctx = { }
+  ctx.program = ir_prog
   ctx.outfile = outfile
 
   emit(ctx, '.text')
@@ -594,6 +610,7 @@ local function generate(ir_prog, outfile)
     emit_subroutine(ctx, ir_subr)
     emit_line(ctx)
   end
+
   -- A nice, hardcoded main function
   emit(ctx, '.globl main')
   emit(ctx, '.type main, @function')

@@ -4,7 +4,7 @@ module my_module {
     return 30;
   }
   function main() -> (int64 ret) {
-    return my_module:bla();
+    return bla();
   }
 }
 

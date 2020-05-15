@@ -5,7 +5,6 @@
 
 local ir = require 'ir'
 local lc = require 'lc'
-local pprint = require 'pprint'
 
 ----------------------------------------------------------------------------------------------------
 -- Utilities
@@ -153,9 +152,8 @@ local function find_variable(ctx, name_path)
   end
 end
 
---[=[ XXX: Roped off, unused
-
 -- Returns the declaration corresponding to the named function
+-- TODO: Stop punting on absolute paths
 --   ctx       : Compiler context
 --   name_path : ast.name_path
 --   -> lc.function
@@ -167,8 +165,6 @@ local function find_function(ctx, name_path)
   end
   return func_decl
 end
-
---]=]
 
 local function compute_type(ctx, ast_type_spec)
   if ast_type_spec.name_path[#ast_type_spec.name_path] == 'int64' then
@@ -210,6 +206,21 @@ function find_or_declare_lvalue(ctx, ast_lvalue)
   elseif ast_lvalue.type == 'reference' then
     return find_variable(ctx, ast_lvalue.name_path)
   end
+end
+
+function put_call(ctx, dst_vars, func, src_vars)
+  local dst_ops = { }
+  local src_ops = { }
+
+  for i,dst_var in ipairs(dst_vars) do
+    dst_ops[i] = dst_var.ir_id
+  end
+
+  for i,src_var in ipairs(src_vars) do
+    src_ops[i] = src_var.ir_id
+  end
+
+  emit(ctx, ir.call(dst_ops, func.ir_subroutine.name, src_ops))
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -383,6 +394,26 @@ function put_expression_h.lvalue(ctx, expr)
 end
 
 function put_expression_h.call(ctx, expr)
+  local func = find_function(ctx, expr.name_path)
+  if #func.ast_function.returns > 0 then
+    local dst_type = compute_type(ctx, func.ast_function.returns[1].type_specifier)
+
+    -- Allocate return storage
+    local dst_vars = { new_local(ctx, dst_type) }
+
+    -- Compute arguments
+    local src_vars = { }
+    for i,arg_expr in ipairs(expr.arguments) do
+      src_vars[i] = put_expression(ctx, arg_expr)
+    end
+
+    -- Put other call stuff
+    put_call(ctx, dst_vars, func, src_vars)
+
+    return dst_vars[1]
+  else
+    report_error(ctx, 'Cannot use function which returns no values in expression')
+  end
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -460,7 +491,7 @@ put_statement_h['return'] = function(ctx, ast_stmt)
   for i,expr in ipairs(ast_stmt.expressions) do
     local expr_var = put_expression(ctx, expr)
     accept_only_int64(ctx, expr_var); 
-    emit(ctx, ir.mov(ir.argumentid(i - 1), expr_var.ir_id))
+    emit(ctx, ir.mov(ir.returnid(i - 1), expr_var.ir_id))
   end
   -- Don't forget to emit actual return statement
   emit(ctx, ir.ret())
@@ -468,15 +499,18 @@ end
 
 function put_statement_h.assignment(ctx, ast_stmt)
   local dst_vars = { }
-  local src_vars = { }
   for i,ast_lvalue in ipairs(ast_stmt.lvalues) do
     dst_vars[i] = find_or_declare_lvalue(ctx, ast_lvalue)
   end
-  for i,expr in ipairs(ast_stmt.expressions) do
-    src_vars[i] = put_expression(ctx, expr)
-  end
   if #ast_stmt.lvalues == #ast_stmt.expressions then
+    -- Evaluate expression list
+    local src_vars = { }
+    for i,expr in ipairs(ast_stmt.expressions) do
+      src_vars[i] = put_expression(ctx, expr)
+    end
+
     if #dst_vars ~= 1 then
+      -- Assign to temporaries, then move
       local tmp_vars = { }
       for i,dst_var in ipairs(dst_vars) do
         tmp_vars[i] = new_local(ctx, dst_var.variable_type)
@@ -484,6 +518,7 @@ function put_statement_h.assignment(ctx, ast_stmt)
       emit_multi_copy(ctx, tmp_vars, src_vars)
       emit_multi_move(ctx, dst_vars, tmp_vars)
     else
+      -- Just assign
       emit_multi_copy(ctx, dst_vars, src_vars)
     end
   elseif #ast_stmt.expressions == 0 then
@@ -491,7 +526,13 @@ function put_statement_h.assignment(ctx, ast_stmt)
   elseif #ast_stmt.expressions == 1 then
     local call_expr = ast_stmt.expressions[1]
     if call_expr.type == 'call' then
-      error('put call assignment')
+      -- Evaluate the call expression's argument expressions
+      local src_vars = { }
+      for i,expr in ipairs(call_expr.arguments) do
+        src_vars[i] = put_expression(ctx, expr)
+      end
+      -- This becomes a simple call
+      put_call(ctx, dst_vars, find_function(ctx, call_expr.name_path), src_vars)
     else
       report_error(ctx, 'Invalid assignment')
     end
@@ -538,7 +579,7 @@ local function put_function(ctx, ast_func)
 
   -- Allocate return registers
   for i,ast_arg_decl in ipairs(ast_func.returns) do
-    ir.create_argument(subr)
+    ir.create_return(subr)
   end
 
   -- Initialize subroutine processing context
