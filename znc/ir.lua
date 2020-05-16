@@ -3,6 +3,8 @@
 -- IR - (I)ntermediate (R)epresentation
 ----------------------------------------------------------------------------------------------------
 
+-- TODO: w, x, y or a list of call inputs is easy to unify into 0, 1, 2 ... etc
+
 local function deepcopy(t)
   r = { }
   for k,v in pairs(t) do
@@ -479,7 +481,6 @@ end
 function sst.call(stmt)
   local str = ''
   if #stmt.return_regs > 0 then
-    str = '('
     for i,return_reg in ipairs(stmt.return_regs) do
       if i == 1 then
         str = str..return_reg
@@ -487,7 +488,7 @@ function sst.call(stmt)
         str = str..', '..return_reg
       end
     end
-    str = str..') := '
+    str = str..' := '
   end
   str = str..stmt.name..' ('
   for i,argument_reg in ipairs(stmt.argument_regs) do
@@ -584,11 +585,21 @@ function ir.dump_subroutine(subr)
   end
 end
 
--- Pretty-prints the given ir.program object to io.output
+-- Pretty-prints the given program object to io.output
 function ir.dump(ir_prog)
   for i,subr in ipairs(ir_prog.subroutines) do
     ir.dump_subroutine(subr)
   end
+end
+
+-- Validates the given program
+-- Well, it will
+function ir.validate(ir_prog)
+  -- TODO: Check for unknown locals
+  -- TODO: Check for invalid registers
+  -- TODO: Check for unknown labels
+  -- TODO: Check for unknown functions
+  -- TODO: Check for literal destination operands
 end
 
 ir.statement_string = stmt_string

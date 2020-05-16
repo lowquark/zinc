@@ -33,6 +33,9 @@ module my_module {
     if(bla(0) != 0) { return 1; }
     if(bla(30) != 30) { return 2; }
 
+    bla(0);
+    bla_xl(1, 2, 3, 4);
+
     if(bla_xl(1, 2, 3, 4) != 10) { return 3; }
 
     int64 a, int64 b, int64 c, int64 d = rev_xl(1, 2, 3, 4);

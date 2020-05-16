@@ -374,7 +374,7 @@ function emit_stmt.div(ctx, ir_stmt)
     if op_z ~= '%rdx' then
       emit_push(ctx, '%rdx', 'register')
     end
-    -- Sign extend %rax into %rdx.
+    -- Sign extend %rax into %rdx
     -- This kills the crab.
     emit(ctx, 'cqto')
     -- Divide [%rdx:%rax] by %rcx
@@ -383,6 +383,18 @@ function emit_stmt.div(ctx, ir_stmt)
     if op_z ~= '%rdx' then
       emit_pop(ctx, '%rdx', 'register')
     end
+  elseif op_y == '%rdx' then
+    -- We'll need to divide by %rcx instead.
+    emit(ctx, 'movq %rdx, %rcx')
+    -- Place our dividend in %rax
+    emit(ctx, 'movq '..op_x..', %rax')
+    -- Sign extend %rax into %rdx
+    -- This kills the crab.
+    emit(ctx, 'cqto')
+    -- Divide [%rdx:%rax] by %rcx
+    emit(ctx, 'idivq %rcx')
+    emit(ctx, 'movq %rax, '..op_z)
+    emit(ctx, 'movq %rcx, %rdx')
   else
     -- Backup %rdx if it will not be used to return
     if op_z ~= '%rdx' then
@@ -390,7 +402,7 @@ function emit_stmt.div(ctx, ir_stmt)
     end
     -- Place our dividend in %rax
     emit(ctx, 'movq '..op_x..', %rax')
-    -- Sign extend %rax into %rdx.
+    -- Sign extend %rax into %rdx
     -- This kills the crab.
     emit(ctx, 'cqto')
     -- Divide [%rdx:%rax] by (op_y)
@@ -440,6 +452,9 @@ end
 
 function emit_stmt.call(ctx, ir_stmt)
   local target_sub = ir.find_subroutine(ctx.program, ir_stmt.name)
+  if not target_sub then
+    error('Subroutine '..ir_stmt.name..' not found')
+  end
 
   local return_ops = { }
   local return_types = { }
@@ -447,11 +462,7 @@ function emit_stmt.call(ctx, ir_stmt)
   local argument_types = { }
 
   for i,reg in ipairs(ir_stmt.return_regs) do
-    if reg == '~' then
-      return_ops[i], return_types[i] = nil, nil
-    else
-      return_ops[i], return_types[i] = operand(ctx, reg)
-    end
+    return_ops[i], return_types[i] = operand(ctx, reg)
   end
 
   for i,reg in ipairs(ir_stmt.argument_regs) do
@@ -599,12 +610,10 @@ local function generate(ir_prog, outfile)
   emit_line(ctx)
 
   for i,ir_subr in ipairs(ir_prog.subroutines) do
-    --[=[ Bypass register allocation for great testing
     -- Allocate hardware registers
     lsra(ir_subr, #oprand_reg_t)
     -- Print to console for shits and giggles
     ir.dump_subroutine(ir_subr)
-    ]=]
     -- Generate code
     ctx.subroutine_id = i
     emit_subroutine(ctx, ir_subr)

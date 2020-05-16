@@ -204,6 +204,7 @@ function find_or_declare_lvalue(ctx, ast_lvalue)
   if ast_lvalue.type == 'declaration' then
     return new_named_local(ctx, ast_lvalue.name, compute_type(ctx, ast_lvalue.type_specifier))
   elseif ast_lvalue.type == 'reference' then
+    -- TODO: Index expressions!
     return find_variable(ctx, ast_lvalue.name_path)
   end
 end
@@ -442,7 +443,7 @@ function emit_multi_init(ctx, dst_vars)
   end
 end
 
--- Generates IR code which implements an AST statement.
+-- Generates IR code which implements an AST statement
 function put_statement(ctx, ast_stmt)
   local h = put_statement_h[ast_stmt.type]
   if h then
@@ -554,6 +555,13 @@ function put_statement_h.block(ctx, ast_stmt)
 end
 
 function put_statement_h.call(ctx, ast_stmt)
+  -- Evaluate the call expression's argument expressions
+  local src_vars = { }
+  for i,expr in ipairs(ast_stmt.arguments) do
+    src_vars[i] = put_expression(ctx, expr)
+  end
+  -- This becomes a simple call
+  put_call(ctx, { }, find_function(ctx, ast_stmt.name_path), src_vars)
 end
 
 ----------------------------------------------------------------------------------------------------
