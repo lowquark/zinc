@@ -93,12 +93,12 @@ end
 
 cc.variable_methods = { }
 cc.variable_meta = { __index = cc.variable_methods }
-function cc.variable(var_type, ir_id)
-  assert(type(var_type) == 'table')
+function cc.variable(type_, ir_id)
+  assert(type(type_) == 'table')
   assert(type(ir_id) == 'string')
   return setmetatable({
     type = 'local',
-    variable_type = var_type,
+    type = type_,
     ir_id = ir_id
   }, cc.variable_meta)
 end
