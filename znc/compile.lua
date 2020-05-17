@@ -48,6 +48,75 @@ local function deepcopy(t)
   return r
 end
 
+local function assert_type(var, arg, ...)
+  assert(type(var) == arg, ...)
+end
+
+local function assert_meta_type(t, meta, ...)
+  assert(getmetatable(t) == meta, ...)
+end
+
+----------------------------------------------------------------------------------------------------
+-- Compiler constructions
+
+local cc = {}
+
+----------------------------------------------------------------------------------------------------
+-- cc.expression_proxy
+--
+-- An expression proxy might be a literal, an lvalue, or a temporary result.
+-- Keep in mind, it may be behind you.
+cc.expression_proxy_methods = { }
+cc.expression_proxy_meta = { __index = cc.expression_proxy_methods }
+
+-- Creates an expression proxy for a literal
+-- For now, literals are only integers
+function cc.expression_proxy_literal(value)
+  assert_type(value, 'number')
+  return setmetatable({
+    __variant = 'literal',
+    value = value,
+  }, cc.expression_proxy_meta)
+end
+
+-- Creates an expression proxy for an lvalue
+function cc.expression_proxy_lvalue(lvalue)
+  assert_meta_type(lvalue, cc.lvalue_proxy_meta)
+  return setmetatable({
+    __variant = 'lvalue',
+    lvalue = lvalue,
+  }, cc.expression_proxy_meta)
+end
+
+----------------------------------------------------------------------------------------------------
+-- cc.lvalue_proxy
+--
+-- An lvalue proxy might be a variable, or an element of an array.
+cc.lvalue_proxy_methods = { }
+cc.lvalue_proxy_meta = { __index = cc.lvalue_proxy_methods }
+
+-- Creates a variable lvalue proxy
+function cc.lvalue_proxy_variable(var, temp)
+  assert_meta_type(var, lc.variable_meta)
+  assert_type(temp, 'boolean')
+  return setmetatable({
+    __variant = 'variable',
+    variable = var,
+    temporary = temp
+  }, cc.lvalue_proxy_meta)
+end
+
+-- Creates an array element lvalue proxy
+function cc.lvalue_proxy_array_elem(var, expr)
+  assert_meta_type(var, lc.variable_meta)
+  assert_meta_type(expr, cc.expression_proxy_meta)
+  return setmetatable({
+    __variant = 'array_element',
+    variable = var,
+    expression = expr
+  }, cc.lvalue_proxy_meta)
+end
+
 ----------------------------------------------------------------------------------------------------
 -- Misc. allocations
 
@@ -229,26 +298,81 @@ function emit(ctx, stmt)
 end
 
 -- Call when only accepting int64 :p
-local function accept_only_int64(ctx, var)
-  if not ( var.variable_type.hard_type == lc.type_int64 and
-           var.variable_type.reference == false ) then
+function accept_only_int64(ctx, expr_proxy)
+  assert_meta_type(expr_proxy, cc.expression_proxy_meta)
+
+  local var_type
+
+  if expr_proxy.__variant == 'literal' then
+    -- We know literals are only numbers
+    return
+  elseif expr_proxy.__variant == 'lvalue' then
+    -- Lvalue, make sure it references the correct type
+    var_type = expr_proxy.lvalue.variable.variable_type
+  elseif expr_proxy.__variant == 'temporary' then
+    -- Temporary, make sure it is the correct type
+    var_type = expr_proxy.variable.variable_type
+  end
+
+  -- Must be a plain int64
+  if not ( var_type.hard_type == lc.type_int64 and var_type.reference == false ) then
     report_error(ctx, 'Only accepting int64 at this time')
   end
 end
 
-function put_call(ctx, dst_vars, func, src_vars)
-  local dst_ops = { }
-  local src_ops = { }
+function lvalue_operand(lvalue_proxy)
+  if lvalue_proxy.__variant == 'variable' then
+    return lvalue_proxy.variable.ir_id
+  elseif lvalue_proxy.__variant == 'array_element' then
+    error('TODO')
+  end
+end
 
-  for i,dst_var in ipairs(dst_vars) do
-    dst_ops[i] = dst_var.ir_id
+function expression_operand(expr_proxy)
+  if expr_proxy.__variant == 'literal' then
+    return ir.literal(expr_proxy.value)
+  elseif expr_proxy.__variant == 'lvalue' then
+    return lvalue_operand(expr_proxy.lvalue)
+  end
+end
+
+function assign_lvalue(ctx, lvalue_proxy, expr_proxy)
+  assert_meta_type(lvalue_proxy, cc.lvalue_proxy_meta)
+  assert_meta_type(expr_proxy, cc.expression_proxy_meta)
+  if lvalue_proxy.__variant == 'variable' then
+    emit(ctx, ir.mov(lvalue_proxy.variable.ir_id, expression_operand(expr_proxy)))
+  elseif lvalue_proxy.__variant == 'array_element' then
+    error('TODO')
+  end
+end
+
+function assign_lvalue_list(ctx, lvalue_proxies, expr_proxies)
+  assert(#lvalue_proxies == #expr_proxies, 'List lengths must match.')
+  for i=1,#lvalue_proxies do
+    assign_lvalue(ctx, lvalue_proxies[i], expr_proxies[i])
+  end
+end
+
+function new_temp_int64(ctx)
+  local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
+  return cc.lvalue_proxy_variable(out_var, true), out_var
+end
+
+function put_call(ctx, lvalues, func, exprs)
+  local lvalue_ops = { }
+  local expr_ops = { }
+
+  -- TODO: lvalue_operands aren't supposed to be used as destination operands. But maybe they can
+  -- be. I don't know.
+  for i,lvalue in ipairs(lvalues) do
+    lvalue_ops[i] = lvalue_operand(lvalue)
   end
 
-  for i,src_var in ipairs(src_vars) do
-    src_ops[i] = src_var.ir_id
+  for i,expr in ipairs(exprs) do
+    expr_ops[i] = expression_operand(expr)
   end
 
-  emit(ctx, ir.call(dst_ops, func.ir_subroutine.name, src_ops))
+  emit(ctx, ir.call(lvalue_ops, func.ir_subroutine.name, expr_ops))
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -256,64 +380,60 @@ end
 
 function put_unop_expression(ctx, expr, op)
   -- Evaluate subexpression
-  local expr_var = emit_expression(ctx, expr)
-  accept_only_int64(ctx, expr_var);
+  local in_expr = emit_expression(ctx, expr)
+  accept_only_int64(ctx, in_expr);
 
-  -- Create new slot
-  local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
-  accept_only_int64(ctx, out_var); 
+  -- Create new temporary variable
+  local out_lvalue, out_var = new_temp_int64(ctx)
 
   -- Submit, emit
-  emit(ctx, op(out_var.ir_id, expr_var.ir_id))
+  emit(ctx, op(out_var.ir_id, expression_operand(in_expr)))
 
-  return out_var
+  return cc.expression_proxy_lvalue(out_lvalue)
 end
 
 function put_binop_expression(ctx, expr_a, expr_b, op)
   -- Evaluate subexpression
-  local expr_a_var = emit_expression(ctx, expr_a)
-  accept_only_int64(ctx, expr_a_var); 
+  local expr_a = emit_expression(ctx, expr_a)
+  accept_only_int64(ctx, expr_a)
 
   -- Evaluate subexpression
-  local expr_b_var = emit_expression(ctx, expr_b)
-  accept_only_int64(ctx, expr_b_var); 
+  local expr_b = emit_expression(ctx, expr_b)
+  accept_only_int64(ctx, expr_b)
 
   -- Create new slot
-  local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
-  accept_only_int64(ctx, out_var); 
+  local out_lvalue, out_var = new_temp_int64(ctx)
 
   -- Submit, emit
-  emit(ctx, op(out_var.ir_id, expr_a_var.ir_id, expr_b_var.ir_id))
+  emit(ctx, op(out_var.ir_id, expression_operand(expr_a), expression_operand(expr_b)))
 
-  return out_var
+  return cc.expression_proxy_lvalue(out_lvalue)
 end
 
 function put_logical_expression(ctx, expr_a, expr_b, mode)
   local LABEL_B = new_label(ctx)
   local LABEL_END = new_label(ctx)
 
-  -- Create a new slot for result
-  local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
-  accept_only_int64(ctx, out_var); 
+  -- Create destination temporary
+  local out_lvalue, out_var = new_temp_int64(ctx)
+  local op_out = out_var.ir_id;
 
   -- Evaluate subexpression A
-  local expr_a_var = emit_expression(ctx, expr_a)
-  accept_only_int64(ctx, expr_a_var); 
-
-  local reg_out = out_var.ir_id;
-  local reg_a = expr_a_var.ir_id;
+  local expr_a = emit_expression(ctx, expr_a)
+  accept_only_int64(ctx, expr_a)
+  local op_a = expression_operand(expr_a);
 
   if mode == 'and' then
-    -- If reg_a is nonzero, jump to the evaluation of the next expression
-    -- Otherwise, set reg_out to zero, and jump to end (early exit, return zero)
-    emit(ctx, ir.jnz(LABEL_B, reg_a));
-    emit(ctx, ir.mov(reg_out, ir.literal(0)));
+    -- If op_a is nonzero, jump to the evaluation of the next expression
+    -- Otherwise, set op_out to zero, and jump to end (early exit, return zero)
+    emit(ctx, ir.jnz(LABEL_B, op_a));
+    emit(ctx, ir.mov(op_out, ir.literal(0)));
     emit(ctx, ir.jmp(LABEL_END));
   elseif mode == 'or' then
-    -- If reg_a is zero, jump to the evaluation of the next expression
-    -- Otherwise, set reg_out to one, and jump to end (early exit, return one)
-    emit(ctx, ir.jz(LABEL_B, reg_a));
-    emit(ctx, ir.mov(reg_out, ir.literal(1)));
+    -- If op_a is zero, jump to the evaluation of the next expression
+    -- Otherwise, set op_out to one, and jump to end (early exit, return one)
+    emit(ctx, ir.jz(LABEL_B, op_a));
+    emit(ctx, ir.mov(op_out, ir.literal(1)));
     emit(ctx, ir.jmp(LABEL_END));
   else
     error('Bad mode')
@@ -323,19 +443,17 @@ function put_logical_expression(ctx, expr_a, expr_b, mode)
   emit(ctx, ir.label(LABEL_B))
 
   -- Evaluate subexpression B
-  local expr_b_var = emit_expression(ctx, expr_b)
-  accept_only_int64(ctx, expr_b_var); 
+  local expr_b = emit_expression(ctx, expr_b)
+  accept_only_int64(ctx, expr_b)
+  local op_b = expression_operand(expr_b);
 
-  local reg_b = expr_b_var.ir_id;
-
-  -- Set reg_out to zero iff reg_b is zero
-  emit(ctx, ir.neq(reg_out, reg_b, ir.literal(0)))
+  -- Set op_out to zero iff op_b is zero
+  emit(ctx, ir.neq(op_out, op_b, ir.literal(0)))
 
   -- LABEL_END
   emit(ctx, ir.label(LABEL_END))
 
-  -- Our result is in var_z
-  return out_var
+  return cc.expression_proxy_lvalue(out_lvalue)
 end
 
 -- Emits code which evaluates the given expression tree and stores it in a new slot
@@ -350,10 +468,7 @@ function emit_expression(ctx, expr)
 end
 
 function emit_expression_h.integer(ctx, expr)
-  local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
-  -- Always int64, so just mov this value
-  emit(ctx, ir.mov(out_var.ir_id, ir.literal(tonumber(expr.value))))
-  return out_var
+  return cc.expression_proxy_literal(tonumber(expr.value))
 end
 
 function emit_expression_h.negate(ctx, expr)
@@ -417,8 +532,9 @@ function emit_expression_h.logor(ctx, expr)
 end
 
 function emit_expression_h.lvalue(ctx, expr)
-  -- TODO: Index expressions!
-  return find_variable(ctx, expr.lvalue.name_path)
+  -- TODO: Index expressions => array element lvalue
+  local var = find_variable(ctx, expr.lvalue.name_path)
+  return cc.expression_proxy_lvalue(cc.lvalue_proxy_variable(var, false))
 end
 
 function emit_expression_h.call(ctx, expr)
@@ -426,19 +542,23 @@ function emit_expression_h.call(ctx, expr)
   if #func.ast_function.returns > 0 then
     local dst_type = compute_type(ctx, func.ast_function.returns[1].type_specifier)
 
-    -- Allocate return storage
-    local dst_vars = { new_local(ctx, dst_type) }
+    -- Allocate temporary return storage for result
+    -- TODO: lvalue_operands aren't supposed to be used as destination operands. But maybe they can
+    -- be. I don't know.
+    local lvalue = cc.lvalue_proxy_variable(new_local(ctx, dst_type), true)
+    local lvalue_ops = { lvalue_operand(lvalue) }
 
     -- Compute arguments
-    local src_vars = { }
+    local expr_ops = { }
     for i,arg_expr in ipairs(expr.arguments) do
-      src_vars[i] = emit_expression(ctx, arg_expr)
+      local expr = emit_expression(ctx, arg_expr)
+      expr_ops[i] = expression_operand(expr)
     end
 
-    -- Put other call stuff
-    put_call(ctx, dst_vars, func, src_vars)
+    -- Emit call
+    emit(ctx, ir.call(lvalue_ops, func.ir_subroutine.name, expr_ops))
 
-    return dst_vars[1]
+    return cc.expression_proxy_lvalue(lvalue)
   else
     report_error(ctx, 'Cannot use function which returns no values in expression')
   end
@@ -463,11 +583,7 @@ function emit_multi_move(ctx, dst_vars, src_vars)
   end
 end
 
-function emit_multi_init(ctx, dst_vars)
-  for k,dst_var in ipairs(dst_vars) do
-    accept_only_int64(ctx, dst_var)
-    emit(ctx, ir.mov(dst_var.ir_id, ir.literal(0)))
-  end
+function emit_multi_init(ctx, dst_lvalues)
 end
 
 -- Generates IR code which implements an AST statement
@@ -492,8 +608,8 @@ put_statement_h['if'] = function(ctx, ast_stmt)
 
     -- Put conditional expression into new temporary
     local expr_var = emit_expression(ctx, ast_stmt.expression)
-    accept_only_int64(ctx, expr_var); 
-    emit(ctx, ir.jz(LABEL_ELSE, expr_var.ir_id))
+    accept_only_int64(ctx, expr_var)
+    emit(ctx, ir.jz(LABEL_ELSE, expression_operand(expr_var)))
 
     -- Put if statement body
     put_statement(ctx, ast_stmt.if_statement)
@@ -509,8 +625,8 @@ put_statement_h['if'] = function(ctx, ast_stmt)
 
     -- Put conditional expression into new temporary
     local expr_var = emit_expression(ctx, ast_stmt.expression)
-    accept_only_int64(ctx, expr_var); 
-    emit(ctx, ir.jz(LABEL_END, expr_var.ir_id))
+    accept_only_int64(ctx, expr_var)
+    emit(ctx, ir.jz(LABEL_END, expression_operand(expr_var)))
 
     -- Put if statement body
     put_statement(ctx, ast_stmt.if_statement)
@@ -527,9 +643,9 @@ put_statement_h['return'] = function(ctx, ast_stmt)
 
   -- Assign function results to output argument registers
   for i,expr in ipairs(ast_stmt.expressions) do
-    local expr_var = emit_expression(ctx, expr)
-    accept_only_int64(ctx, expr_var); 
-    emit(ctx, ir.mov(ir.returnid(i - 1), expr_var.ir_id))
+    local expr = emit_expression(ctx, expr)
+    accept_only_int64(ctx, expr)
+    emit(ctx, ir.mov(ir.returnid(i - 1), expression_operand(expr)))
   end
   -- Don't forget to emit actual return statement
   emit(ctx, ir.ret())
@@ -540,58 +656,82 @@ end
 
 function put_statement_h.assignment(ctx, ast_stmt)
   -- Find or create lvalue variables
-  local dst_vars = { }
+  local lvalues = { }
   local post_declarations = { }
   for i,ast_lvalue in ipairs(ast_stmt.lvalues) do
+    local var
+
     if ast_lvalue.type == 'declaration' then
       -- Create a local, but don't add it to the current scope just yet. We don't want to allow
-      -- references before the variable has been initialized.
-      dst_vars[i] = new_local(ctx, compute_type(ctx, ast_lvalue.type_specifier))
+      -- use before the variable has been initialized.
+      var = new_local(ctx, compute_type(ctx, ast_lvalue.type_specifier))
       -- Formally declare later
-      table.insert(post_declarations, { ast_lvalue.name, dst_vars[i] })
+      table.insert(post_declarations, { ast_lvalue.name, var })
     elseif ast_lvalue.type == 'reference' then
       -- TODO: Index expressions! (WHAT?!)
-      dst_vars[i] = find_variable(ctx, ast_lvalue.name_path)
+      var = find_variable(ctx, ast_lvalue.name_path)
     end
+
+    table.insert(lvalues, cc.lvalue_proxy_variable(var, false))
   end
 
   -- Create block for temporaries
   local b = new_block(ctx)
 
-  if #ast_stmt.lvalues == #ast_stmt.expressions then
-    -- Evaluate RHS expression list
-    local src_vars = { }
-    for i,expr in ipairs(ast_stmt.expressions) do
-      src_vars[i] = emit_expression(ctx, expr)
+  local first_expr = ast_stmt.expressions[1]
+
+  if #ast_stmt.expressions == 1 and first_expr.type == 'call' then
+    -- Call assignment
+    -- Evaluate the call expression's lvalue operands
+    local lvalue_ops = { }
+    for i,lvalue in ipairs(lvalues) do
+      lvalue_ops[i] = lvalue_operand(lvalue)
     end
 
-    if #dst_vars ~= 1 then
+    -- Evaluate the call expression's expressions and save operands
+    local expr_ops = { }
+    for i,ast_expr in ipairs(first_expr.arguments) do
+      local expr = emit_expression(ctx, ast_expr)
+      expr_ops[i] = expression_operand(expr)
+    end
+
+    -- Find this function
+    local func = find_function(ctx, first_expr.name_path)
+
+    -- Call now
+    emit(ctx, ir.call(lvalue_ops, func.ir_subroutine.name, expr_ops))
+  elseif #ast_stmt.expressions == 0 then
+    -- Initialization assignment
+    -- Just set each to zero
+    for i,lvalue in ipairs(lvalues) do
+      assign_lvalue(ctx, lvalue, cc.expression_proxy_literal(0))
+    end
+  elseif #ast_stmt.lvalues == #ast_stmt.expressions then
+    -- Standard assignment
+    local exprs = { }
+    for i,expr in ipairs(ast_stmt.expressions) do
+      exprs[i] = emit_expression(ctx, expr)
+    end
+
+    if #lvalues ~= 1 then
       -- Assign to temporaries, then move
-      local tmp_vars = { }
-      for i,dst_var in ipairs(dst_vars) do
-        tmp_vars[i] = new_local(ctx, dst_var.variable_type)
+      local temp_lvalues = { }
+      local temp_exprs = { }
+      for i,dst_var in ipairs(lvalues) do
+        local var = new_local(ctx, dst_var.variable.variable_type)
+        local lvalue = cc.lvalue_proxy_variable(var, true)
+        temp_lvalues[i] = lvalue
+        temp_exprs[i] = cc.expression_proxy_lvalue(lvalue)
       end
-      emit_multi_copy(ctx, tmp_vars, src_vars)
-      emit_multi_move(ctx, dst_vars, tmp_vars)
+      assign_lvalue_list(ctx, temp_lvalues, exprs)
+      assign_lvalue_list(ctx, lvalues, temp_exprs)
     else
       -- No frills, just assign
-      emit_multi_copy(ctx, dst_vars, src_vars)
+      assign_lvalue_list(ctx, lvalues, exprs)
     end
-  elseif #ast_stmt.expressions == 0 then
-    emit_multi_init(ctx, dst_vars)
-  elseif #ast_stmt.expressions == 1 then
-    local call_expr = ast_stmt.expressions[1]
-    if call_expr.type == 'call' then
-      -- Evaluate the call expression's argument expressions
-      local src_vars = { }
-      for i,expr in ipairs(call_expr.arguments) do
-        src_vars[i] = emit_expression(ctx, expr)
-      end
-      -- This becomes a simple call, where lvalues are assigned to function results
-      put_call(ctx, dst_vars, find_function(ctx, call_expr.name_path), src_vars)
-    else
-      report_error(ctx, 'Invalid assignment')
-    end
+
+    -- Good error.
+    --error('Stop right there, criminal scum')
   else
     report_error(ctx, 'Invalid assignment')
   end
@@ -621,13 +761,18 @@ function put_statement_h.call(ctx, ast_stmt)
   -- Create block for temporaries
   local b = new_block(ctx)
 
-  -- Evaluate the call expression's argument expressions
-  local src_vars = { }
-  for i,expr in ipairs(ast_stmt.arguments) do
-    src_vars[i] = emit_expression(ctx, expr)
+  -- Evaluate the call expression's expressions and save operands
+  local expr_ops = { }
+  for i,ast_expr in ipairs(ast_stmt.arguments) do
+    local expr = emit_expression(ctx, ast_expr)
+    expr_ops[i] = expression_operand(expr)
   end
-  -- This becomes a simple call
-  put_call(ctx, { }, find_function(ctx, ast_stmt.name_path), src_vars)
+
+  -- Find this function
+  local func = find_function(ctx, ast_stmt.name_path)
+
+  -- Call now (no lvalues)
+  emit(ctx, ir.call({ }, func.ir_subroutine.name, expr_ops))
 
   -- Clear temporaries
   free_block(ctx, b)
@@ -645,8 +790,6 @@ local function put_function(ctx, ast_func)
   ctx.block_stack = { }
   -- Top-level block for this function (no stack allocations - arguments only)
   new_block(ctx)
-
-  pprint(ctx.block_stack)
 
   -- Allocate argument registers and populate initial local scope
   for i,ast_arg_decl in ipairs(ast_func.arguments) do

@@ -1,6 +1,6 @@
 
 ----------------------------------------------------------------------------------------------------
--- Language constructions
+-- lc - (l)anguage (c)onstructions
 
 local lc = { }
 
@@ -38,8 +38,8 @@ function lc.hard_type_struct(fields)
     fields = deepcopy(fields)
   }, lc.hard_type_meta)
 end
-function lc.hard_type_array(var_type, quantity)
-  assert(getmetatable(var_type) == lc.hard_type_meta)
+function lc.hard_type_array(element_type, quantity)
+  assert(getmetatable(element_type) == lc.hard_type_meta)
   assert(type(quantity) == 'number')
   return setmetatable({
     __variant = 'array',
@@ -58,7 +58,7 @@ lc.type_int64 = lc.hard_type_primitive('int64')
 lc.variable_type_methods = { }
 lc.variable_type_meta = { __index = lc.variable_type_methods }
 function lc.variable_type_meta.__tostring(self)
-  local str = '( var_type '
+  local str = '( variable_type '
   if self.const then
     str = str..'const '
   end
@@ -83,24 +83,32 @@ end
 ----------------------------------------------------------------------------------------------------
 -- lc.variable
 
+lc.variable_methods = { }
+lc.variable_meta = { __index = lc.variable_methods }
 function lc.variable(var_type, ir_id)
   assert(type(var_type) == 'table')
   assert(type(ir_id) == 'string')
-  return { type = 'local',
-           variable_type = var_type,
-           ir_id = ir_id }
+  return setmetatable({
+    type = 'local',
+    variable_type = var_type,
+    ir_id = ir_id
+  }, lc.variable_meta)
 end
 
 ----------------------------------------------------------------------------------------------------
 -- lc.function_
 
+lc.function_methods = { }
+lc.function_meta = { __index = lc.function_methods }
 function lc.function_(name, ast_func, ir_subr)
   assert(type(name) == 'string')
   assert(type(ast_func) == 'table')
   assert(type(ir_subr) == 'table')
-  return { name = name,
-           ast_function = ast_func,
-           ir_subroutine = ir_subr }
+  return setmetatable({
+    name = name,
+    ast_function = ast_func,
+    ir_subroutine = ir_subr
+  }, lc.function_meta)
 end
 
 return lc
