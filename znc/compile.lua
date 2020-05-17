@@ -4,7 +4,7 @@
 ----------------------------------------------------------------------------------------------------
 
 local ir = require 'ir'
-local lc = require 'lc'
+local cc = require 'cc'
 local pprint = require 'pprint'
 
 ----------------------------------------------------------------------------------------------------
@@ -48,75 +48,6 @@ local function deepcopy(t)
   return r
 end
 
-local function assert_type(var, arg, ...)
-  assert(type(var) == arg, ...)
-end
-
-local function assert_meta_type(t, meta, ...)
-  assert(getmetatable(t) == meta, ...)
-end
-
-----------------------------------------------------------------------------------------------------
--- Compiler constructions
-
-local cc = {}
-
-----------------------------------------------------------------------------------------------------
--- cc.expression_proxy
---
--- An expression proxy might be a literal, an lvalue, or a temporary result.
--- Keep in mind, it may be behind you.
-cc.expression_proxy_methods = { }
-cc.expression_proxy_meta = { __index = cc.expression_proxy_methods }
-
--- Creates an expression proxy for a literal
--- For now, literals are only integers
-function cc.expression_proxy_literal(value)
-  assert_type(value, 'number')
-  return setmetatable({
-    __variant = 'literal',
-    value = value,
-  }, cc.expression_proxy_meta)
-end
-
--- Creates an expression proxy for an lvalue
-function cc.expression_proxy_lvalue(lvalue)
-  assert_meta_type(lvalue, cc.lvalue_proxy_meta)
-  return setmetatable({
-    __variant = 'lvalue',
-    lvalue = lvalue,
-  }, cc.expression_proxy_meta)
-end
-
-----------------------------------------------------------------------------------------------------
--- cc.lvalue_proxy
---
--- An lvalue proxy might be a variable, or an element of an array.
-cc.lvalue_proxy_methods = { }
-cc.lvalue_proxy_meta = { __index = cc.lvalue_proxy_methods }
-
--- Creates a variable lvalue proxy
-function cc.lvalue_proxy_variable(var, temp)
-  assert_meta_type(var, lc.variable_meta)
-  assert_type(temp, 'boolean')
-  return setmetatable({
-    __variant = 'variable',
-    variable = var,
-    temporary = temp
-  }, cc.lvalue_proxy_meta)
-end
-
--- Creates an array element lvalue proxy
-function cc.lvalue_proxy_array_elem(var, expr)
-  assert_meta_type(var, lc.variable_meta)
-  assert_meta_type(expr, cc.expression_proxy_meta)
-  return setmetatable({
-    __variant = 'array_element',
-    variable = var,
-    expression = expr
-  }, cc.lvalue_proxy_meta)
-end
-
 ----------------------------------------------------------------------------------------------------
 -- Misc. allocations
 
@@ -131,7 +62,7 @@ end
 -- Local variable / block allocations
 
 function type_stack_size(ctx, var_type)
-  if var_type.reference == false and var_type.hard_type == lc.type_int64 then
+  if var_type.reference == false and var_type.hard_type == cc.type_int64 then
     -- int64, one machine word c:
     return 1
   end
@@ -180,8 +111,8 @@ end
 
 -- Attempts to create a local variable in the current block
 --   ctx       : Compiler context
---   var_type  : lc.variable_type
---   -> lc.variable
+--   var_type  : cc.variable_type
+--   -> cc.variable
 function new_local(ctx, var_type)
   -- Find top block
   local block_stack = ctx.block_stack
@@ -198,7 +129,7 @@ function new_local(ctx, var_type)
   -- Create an entry for a new local in the current subroutine
   local id = ir.create_local(ctx.subroutine, offset, size)
   -- Create official variable object
-  local var = lc.variable(var_type, id)
+  local var = cc.variable(var_type, id)
 
   -- Return constructed variable
   return var
@@ -222,7 +153,7 @@ end
 -- Returns the declaration corresponding to the named variable
 --   ctx       : Compiler context
 --   name_path : ast.name_path
---   -> lc.variable
+--   -> cc.variable
 local function find_variable(ctx, name_path)
   -- Find top block
   local block_stack = ctx.block_stack
@@ -246,12 +177,12 @@ end
 --   name     : string
 --   ast_func : ast.function_declaration
 --   ir_subr  : ir.subroutine
---   -> lc.function_
+--   -> cc.function_
 local function new_function(ctx, name, ast_func, ir_subr)
   if ctx.module_scope[name] then
     report_error(ctx, 'Function `'..name..'` has already been declared in this scope.')
   else
-    local new_decl = lc.function_(name, ast_func, ir_subr)
+    local new_decl = cc.function_(name, ast_func, ir_subr)
     ctx.module_scope[name] = new_decl
     return new_decl
   end
@@ -261,7 +192,7 @@ end
 -- TODO: Stop punting on absolute paths
 --   ctx       : Compiler context
 --   name_path : ast.name_path
---   -> lc.function
+--   -> cc.function
 local function find_function(ctx, name_path)
   local name_str = tostring(name_path)
   local func_decl = ctx.module_scope[name_str]
@@ -273,7 +204,7 @@ end
 
 local function compute_type(ctx, ast_type_spec)
   if ast_type_spec.name_path[#ast_type_spec.name_path] == 'int64' then
-    return lc.variable_type(false, lc.type_int64, false)
+    return cc.variable_type(false, cc.type_int64, false)
   else
     error('Cannot compute type!')
   end
@@ -299,7 +230,7 @@ end
 
 -- Call when only accepting int64 :p
 function accept_only_int64(ctx, expr_proxy)
-  assert_meta_type(expr_proxy, cc.expression_proxy_meta)
+  assert(getmetatable(expr_proxy) == cc.expression_proxy_meta)
 
   local var_type
 
@@ -315,7 +246,7 @@ function accept_only_int64(ctx, expr_proxy)
   end
 
   -- Must be a plain int64
-  if not ( var_type.hard_type == lc.type_int64 and var_type.reference == false ) then
+  if not ( var_type.hard_type == cc.type_int64 and var_type.reference == false ) then
     report_error(ctx, 'Only accepting int64 at this time')
   end
 end
@@ -337,8 +268,8 @@ function expression_operand(expr_proxy)
 end
 
 function assign_lvalue(ctx, lvalue_proxy, expr_proxy)
-  assert_meta_type(lvalue_proxy, cc.lvalue_proxy_meta)
-  assert_meta_type(expr_proxy, cc.expression_proxy_meta)
+  assert(getmetatable(lvalue_proxy) == cc.lvalue_proxy_meta)
+  assert(getmetatable(expr_proxy) == cc.expression_proxy_meta)
   if lvalue_proxy.__variant == 'variable' then
     emit(ctx, ir.mov(lvalue_proxy.variable.ir_id, expression_operand(expr_proxy)))
   elseif lvalue_proxy.__variant == 'array_element' then
@@ -354,7 +285,7 @@ function assign_lvalue_list(ctx, lvalue_proxies, expr_proxies)
 end
 
 function new_temp_int64(ctx)
-  local out_var = new_local(ctx, lc.variable_type(false, lc.type_int64, false))
+  local out_var = new_local(ctx, cc.variable_type(false, cc.type_int64, false))
   return cc.lvalue_proxy_variable(out_var, true), out_var
 end
 
@@ -799,7 +730,7 @@ local function put_function(ctx, ast_func)
     -- Allocate this argument
     local ir_id = ir.create_argument(subr)
     -- Place in local scope
-    add_to_scope(ctx, name, lc.variable(arg_type, ir_id))
+    add_to_scope(ctx, name, cc.variable(arg_type, ir_id))
   end
 
   -- Allocate return registers
