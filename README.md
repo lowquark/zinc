@@ -1,37 +1,28 @@
 
 # Zinc
 
-Zinc is my experimental, data-driven, systems programming language project. It aims to provide
-simple, consistent structure throughout programs, minimize undefined behavior, and hopefully reduce
-the [mental space](http://www.paulgraham.com/head.html) required for good software architecture.
+Zinc is my experimental, C-family language.
 
-## Features of the language
+## Features
 
-Zinc is essentially a simplified version of C, with built-in lists and dictionaries; stricter,
-C++*-style* references; and a simple, but flexible encapsulation technique.
+As an embedded systems developer, I have a strong affinity for C, but am keenly aware of its
+limitations. Here's a list of features I'm working toward:
 
-Since Zinc is mostly still on paper, I can't promise these ideas aren't half-baked, but they seem
-fine so far. In any case, the features I'm working toward are listed here.
+  - Namespaces
+  - Default initialization
+  - Usable strings
+  - Multiple assignment & return values
+  - C++ lvalue references
+  - Built-in data structures
+  - Write-access restrictions
 
-### Initialization by default
-
-It goes without saying that the world would be a better place if I had to specify `uninitialized int
-a;` instead of `int a;` to risk undefined behavior. It's 2020. Initialization is the rule, not the
-exception!
-
-### Heirarchical naming (namespaces)
-
-Like every other modern language, Zinc uses namespaces to cut down on the length of descriptive
-names. Zinc uses a single ':' as a namespace separator, e.g.: `my_module:sub_module:foo();` or
-`my_module:Bar bar;`.
+The first 3 are pretty obvious to anyone who's used C for a prolonged period of time. The rest I
+describe in more detail below.
 
 ### Multiple assignment & return values
 
-I've found that only returning a single value from a function can be frustratingly asymmetric.
-Workarounds (at least in C++) are clunky and always add boilerplate. The simple solution is to
-implement multiple assignment and let the compiler take care of the details.
-
-This makes returning status codes, or additional, optional information very convenient:
+Multiple return values makes returning status codes, or additional, optional information very
+convenient:
 
     x, x_is_valid = complex_task(...);
     if(x_is_valid) {
@@ -42,22 +33,19 @@ Not to mention, swapping in a one-liner is *supremely* satisfying:
 
     a, b = b, a;
 
+Of course, because `=` invokes copying, using a dedicated `swap(...)` function would be far more
+efficient for container objects like `vector` or `map`. It's possible I've had too much fun in Lua
+and Python lately. In any case, this is a prominent feature I'm working toward.
+
 ### Built-in data structures
 
-Like Python, the Zinc language itself provides built-in data structures. This is in contrast to C++,
-whose standard data structures are implemented in C++.
-
-The most important advantage to having built-in data structures is that it drastically simplifies
-iteration by avoiding the need for iterators. It also enables optimized behavior without exposing
-hard-to-use features into the language, and it promotes more standardized interfaces between
-libraries.
-
-Ideally, something like the following should be possible, all memory managed:
+I've spent a lot of time implementing data structures in C. People have made fun of me for it.
+Sadly, I haven't found a satisfying way to implement them generically. Part of me has decided they
+should be provided directly by the language. For example:
 
     function main() {
-      // Declares a list of int64s
-      list<int64> my_list;
-      // append(...) is an (overloaded) builtin, much like sizeof(...)
+      // Declares a vector of int64s
+      vector<int64> my_list;
       append(my_list, 5);
       append(my_list, 5);
       append(my_list, 5);
@@ -67,14 +55,15 @@ Ideally, something like the following should be possible, all memory managed:
       }
     }
 
-Of course, Bjarne Stroustrup advertized the same thing once upon a time.
+where `append(...)` is a magic built-in function, kind of like `sizeof(...)`. Fundamentally, data
+structures like these should be possible without exposing destructors, copy constructors, and
+assignment operators into the language itself. I think it _just might work_.
 
-### Stack-only, never-null references
+### C++ lvalue references
 
-There is a growing trend in the language development community to rethink memory management and
-safety. Case in point: Rust. Zinc joins this trend by reducing the scope of when and where memory
-references may be used. In Zinc, references are very similar to C++ references (`&`, not `\*`), with
-the additional stipulation that they may only be stored on the stack.
+I've been mulling over an oddball sort of _anti-feature_ that might just be cool in practice.
+Instead of proper C pointers, I want to experiment with C++ lvalue references that you're not
+allowed to store in structs:
 
     struct MyStruct {
       const OtherStruct & other_struct; // This is an error, no references outside of functions
@@ -86,21 +75,17 @@ the additional stipulation that they may only be stored on the stack.
       do_something(other_struct) // Passed by reference (or copied, depending on signature)
     }
 
-Though restrictive, this is a more data-oriented approach to memory management. Instead of
-referencing related objects explicitly with a memory address, objects must reference their peers
-with some kind of context-specific state variable. In other words, an object must store the other
-object's array index or dictionary key.
+This is pretty restrictive, but I think there are reasonable workarounds for pointers. For example,
+you can always just store the array index of a neighboring struct, instead of storing its address
+directly.
 
 In return, the compiler can generate copy constructors, move constructors, and automatic
-serialization/deserialization very easily. The implementation of built-in data structures is
-simplified too. Not to mention, references-to-references don't exist. It's not necessarily safe, and
-it isn't always pretty (sentinel objects may be required!), but it's easier to get right, and that
-just might reduce bugs.
+serialization very easily. The implementation of built-in data structures is simplified too. Who
+knows? It just might be useful.
 
-### Const-qualification & write-access restrictions
+### Write-access restrictions 
 
-Zinc ensures internal-consistency of structs through a particular `access` paradigm. The simplest
-way to describe this is with a code demonstration:
+This is another wierd one. The simplest way to describe this is with a code demonstration:
 
     struct MyStruct {
       int a;
@@ -121,12 +106,51 @@ way to describe this is with a code demonstration:
       }
     }
 
-Basically, the modification of structs is restricted to certain modules ---those which have *access*
-. All other modules are given read-only access. This provides encapsulation as far as
-internal-consistency is concerned, though it still allows data to be read from anywhere.
+Basically, only certain modules are allowed to modify the contents of certain struct types ---those
+which have *access* to that type. This is the most primitive form of encapsulation that I can think
+of. What's interesting to me, is how one can use this feature to structure code without drawing hard
+lines for which methods are part of which objects.
 
-In my tests, I have found this concept to express and enforce certain dataflow patterns remarkably
-elegantly. But that's just me.
+    struct Foo {
+      // ...
+      access big:foo_subsystem;
+    }
+
+    struct Bar {
+      // ...
+      access big:bar_subsystem;
+    }
+
+    struct Big {
+      Foo foo;
+      Bar bar;
+    }
+
+    module big {
+      function do_complex_thing(Big b) {
+        foo_subsystem:do_foo(b);
+        bar_subsystem:do_bar(b);
+      }
+    }
+
+    module big:foo_subsystem {
+      function do_foo(Big b) {
+        // I still have access to data in b, but I have specific priviledges within B
+      }
+    }
+
+    module big:bar_subsystem {
+      function do_bar(Big b) {
+        // I still have access to data in b, but I have specific priviledges within B
+      }
+    }
+
+In this example, `struct Big` is assumed to be some kind of God class, which is divided into `Foo`
+and `Bar`: logically distinct concepts with fragile state that shouldn't be altered by anyone who
+isn't in the loop. With the `access` concept, the compiler can help protect data integrity without
+the programmer having to create independent, use-anywhere objects.
+
+I have a feeling this should scale pretty well. I think it's worth giving a shot.
 
 # znc (Zinc Compiler)
 
