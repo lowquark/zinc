@@ -9,11 +9,11 @@ the following features:
   - Multiple assignment & return values
   - Lvalue references (C++)
   - Built-in data structures
-  - Write-access restriction (access)
+  - Write-access restriction (_access_)
 
 One notable _anti-feature_ is that the language doesn't have true objects ---the kind with
 constructors, methods, and inheritance. Instead, it loosely associates structs to particular groups
-of functions through a novel write-access concept that I describe somewhat below.
+of functions through a novel _access_ concept that I describe somewhat below.
 
 It's not much yet, and it's going to change, but I'm hoping to put these features together into a
 cohesive programming language.
@@ -87,7 +87,7 @@ By making these sacrifices, though, the compiler can generate copy constructors,
 and automatic serialization very easily. The implementation of built-in data structures is
 simplified too. Who knows? It just might be useable.
 
-### Write-access restriction (access)
+### Write-access restriction (_access_)
 
 This is an original concept that I am the most interested in building, and I can't say I've seen it
 in the wild before. It's a very minimal form of procedural-style encapsulation, with a few
