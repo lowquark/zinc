@@ -120,8 +120,8 @@ sees the struct's fields as read-only. The simplest way to describe it is with a
 It's kind of like what a `friend namespace` would be, if ever there was such a thing.
 
 What's of particular interest to me, is how one can use this feature to structure code without
-having to draw hard lines between objects. Instead, it seems that write-access restriction just kind
-of flows from the top down:
+having to draw hard lines between objects. Instead, it seems that access restrictions just kind of
+flow from the top down:
 
     struct Foo {
       // ...
@@ -141,6 +141,7 @@ of flows from the top down:
 
     module big {
       function do_complex_thing(Big b) {
+        // We can only read from b here, but our subordinates can modify it!
         foo_subsystem:do_foo(b);
         bar_subsystem:do_bar(b);
       }
@@ -148,21 +149,21 @@ of flows from the top down:
 
     module big:foo_subsystem {
       function do_foo(Big b) {
-        // I still have access to data in b, but I have specific privileges within B
+        // We can modify b.foo here (but only read from b.bar)
       }
     }
 
     module big:bar_subsystem {
       function do_bar(Big b) {
-        // I still have access to data in b, but I have specific privileges within B
+        // We can modify b.bar here (but only read from b.foo)
       }
     }
 
 In this example, `struct Big` is assumed to be some kind of God class, which is divided into `Foo`
 and `Bar`: logically distinct concepts with fragile internal state that shouldn't be altered by
 anyone who isn't in the loop. As part of its complex task, `big` divides up responsibility between
-its subsystems, and it does so without sacrificing scope ---a method call would be entirely
-restricted to the contents of `Foo` or `Bar`, requiring additional API complexity.
+its subsystems, and it does so without sacrificing scope ---a standard OOP method call would be
+entirely restricted to the contents of `Foo` or `Bar`, requiring additional API complexity.
 
 With the `access` concept, I'm hoping the compiler can help protect data integrity in complex
 processes without the programmer having to divide everything up into objects, fretting over whether
@@ -170,7 +171,9 @@ they're robust in all possible use cases. Indeed, I think it would help structur
 have a clear object-oriented representation, or one which would require extensive use of callbacks
 and handlers.
 
-I can see it also turning out to be one giant mess of procedural code. But isn't everything?
+Moreover, I can see subsystems like `Foo` and `Bar` fluidly growing into their own distinct objects
+as the codebase grows. I can also see it turning out to be one giant mess of procedural code. Who
+knows?
 
 # znc (Zinc Compiler)
 
