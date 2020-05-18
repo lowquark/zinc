@@ -1,10 +1,6 @@
 
 # Zinc
 
-Zinc is my experimental, C-family language.
-
-## Features
-
 Inspired by C, C++, and Lua, I've dreamt up a very simple, systems-level programming language with
 the following features:
 
@@ -13,34 +9,35 @@ the following features:
   - Multiple assignment & return values
   - Lvalue references (C++)
   - Built-in data structures
-  - Write-access restriction
+  - Write-access restriction (access)
 
 One notable _anti-feature_ is that the language doesn't have true objects ---the kind with
 constructors, methods, and inheritance. Instead, it loosely associates structs to particular groups
-of functions through a novel write-access concept.
+of functions through a novel write-access concept that I describe somewhat below.
 
 It's not much yet, and it's going to change, but I'm hoping to put these features together into a
 cohesive programming language.
 
 ### Multiple assignment & return values
 
-It's possible I've had too much fun in Lua lately, but having multiple return values can make
-returning extra information very convenient:
+Multiple return values makes returning extra information from a function very convenient:
 
-    x, x_is_valid = complex_task(...);
-    if(x_is_valid) {
+    int x, Status status = complex_task(...);
+    if(status == Status:OK) {
       // ... use x
     }
 
-Not to mention, swapping in a one-liner is pretty satisfying, too.
+I'd have to use an optional wrapper, or a dedicated struct to pull this off in C or C++. Not to
+mention, swapping in a one-liner is pretty satisfying, too.
 
     a, b = b, a;
 
 _Disclaimer: Because `=` invokes copying, using a dedicated swap operation would be a lot more
 efficient for containers like `vector`._
 
-Abstractly, having multiple return values makes APIs more symmetric in terms of input and
-output. I think it would be nice to have in a systems language.
+I've implemented a few revisions of this feature, and I haven't found any reasons it shouldn't be
+supported (other than the fact that it implies the use of a heavily nonstandard ABI). Personally, I
+think it would be nice to have in a low-level language.
 
 ### Built-in data structures
 
@@ -90,7 +87,7 @@ By making these sacrifices, though, the compiler can generate copy constructors,
 and automatic serialization very easily. The implementation of built-in data structures is
 simplified too. Who knows? It just might be useable.
 
-### Write-access restriction
+### Write-access restriction (access)
 
 This is an original concept that I am the most interested in building, and I can't say I've seen it
 in the wild before. It's a very minimal form of procedural-style encapsulation, with a few
@@ -175,8 +172,9 @@ I can see it also turning out to be one giant mess of procedural code. Who knows
 
 # znc (Zinc Compiler)
 
-I have a few thousand lines of Lua that spit out x86-64 assembly. One day I'd like to have a C
-implementation. It's not much yet, so here's some compiler output:
+I have a few thousand lines of Lua that spit out x86-64 assembly. Don't worry, it's just a
+prototype. One day I'll take a shot at writing it in C. It's not much yet, so here's some compiler
+output:
 
 ### Input file
 
