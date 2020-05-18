@@ -13,7 +13,7 @@ the following features:
   - Multiple assignment & return values
   - Lvalue references (C++)
   - Built-in data structures
-  - Write-access restrictions
+  - Write-access restriction
 
 One notable _anti-feature_ is that the language doesn't have true objects ---the kind with
 constructors, methods, and inheritance. Instead, it loosely associates structs to particular groups
@@ -44,10 +44,10 @@ output. I think it would be nice to have in a systems language.
 
 ### Built-in data structures
 
-I've spent a lot of time implementing data structures in C, so much that people have made fun of me
-for it. Even still, I haven't found a satisfying way to implement them generically. (If anyone had,
-maybe C wouldn't be so notoriously buggy.) Part of me has decided that complex data structures
-should be provided directly by the language. For example:
+I've spent a lot of time implementing data structures in C, to the point that people make fun of me.
+Even still, I haven't found a satisfying way to implement them generically. (If anyone had, maybe C
+wouldn't be so notoriously buggy.) Part of me has decided that complex data structures should be
+provided directly by the language. For example:
 
     function main() {
       // Declares a vector of int64s
@@ -90,11 +90,16 @@ By making these sacrifices, though, the compiler can generate copy constructors,
 and automatic serialization very easily. The implementation of built-in data structures is
 simplified too. Who knows? It just might be useable.
 
-### Write-access restrictions 
+### Write-access restriction
 
-For a given struct type, only the code within certain modules has the ability to modify structs of
-that type. Modules which contain those functions are said to have *access* to that type. The
-simplest way to describe it is with a code demonstration:
+This is an original concept that I am the most interested in building, and I can't say I've seen it
+in the wild before. It's a very minimal form of procedural-style encapsulation, with a few
+architectural side-effects that I think are worth exploring.
+
+Each struct declares which modules (essentially namespaces) are allowed to modify it. In other
+words, the struct specifies which modules have *access*. Anyone who doesn't have access sees the
+struct's fields with an implicit const qualifier. It's what a `friend namespace` would be, if ever
+there was such a thing. The simplest way to describe it is with a code demonstration:
 
     struct MyStruct {
       int a;
@@ -111,13 +116,13 @@ simplest way to describe it is with a code demonstration:
     module other_module {
       function bar() {
         MyStruct my_struct;
-        my_struct.a = 5;     // Not OK - other_module does not have access to MyStruct.
+        my_struct.a = 5;    // Not OK - other_module does not have access to MyStruct.
       }
     }
 
-This is the most primitive form of encapsulation that I can think of. What's of particular interest
-to me, is how one can use this feature to structure code without having to draw hard lines between
-objects. Instead, the idea is that write-access restriction just kind of flows from the top down.
+What's of particular interest to me, is how one can use this feature to structure code without
+having to draw hard lines between objects. Instead, write-access restriction just kind of flows from
+the top down.
 
     struct Foo {
       // ...
@@ -155,16 +160,18 @@ objects. Instead, the idea is that write-access restriction just kind of flows f
     }
 
 In this example, `struct Big` is assumed to be some kind of God class, which is divided into `Foo`
-and `Bar` ---logically distinct concepts with fragile internal state that shouldn't be altered by
+and `Bar`: logically distinct concepts with fragile internal state that shouldn't be altered by
 anyone who isn't in the loop. As part of its complex task, `big` divides up responsibility between
 its subsystems, and it does so without sacrificing scope ---a method call would be entirely
-restricted to the contents of `Foo` or `Bar`, requiring creation of a separate object API.
+restricted to the contents of `Foo` or `Bar`, requiring additional API complexity.
 
 With the `access` concept, I'm hoping the compiler can help protect data integrity in complex
 processes without the programmer having to divide everything up into objects, fretting over whether
 they're robust in all possible use cases. Indeed, I think it would help structure code that doesn't
 have a clear object-oriented representation, or one which would require extensive use of callbacks
-and handlers. It might also turn out to be one giant mess. Who knows.
+and handlers.
+
+I can see it also turning out to be one giant mess of procedural code. Who knows.
 
 # znc (Zinc Compiler)
 
