@@ -1,8 +1,8 @@
 
 # Zinc
 
-Inspired by C, C++, and Lua, I've dreamt up a very simple, systems-level programming language with
-the following features:
+Inspired by C, C++, and Lua, I've come up with a very simple, systems-level programming language
+with the following features:
 
   - Namespaces
   - Default initialization
@@ -16,7 +16,8 @@ constructors, methods, and inheritance. Instead, it loosely associates structs t
 of functions through a novel _access_ concept that I describe somewhat below.
 
 It's not much yet, and it's going to change, but I'm hoping to put these features together into a
-cohesive programming language.
+cohesive programming language. Namespaces and default initialization are exactly what you'd expect,
+so I won't waste your time describing them here.
 
 ### Multiple assignment & return values
 
@@ -28,7 +29,7 @@ Multiple return values makes returning extra information from a function very co
     }
 
 I'd have to use an optional wrapper, or a dedicated struct to pull this off in C or C++. Not to
-mention, swapping in a one-liner is pretty satisfying, too.
+mention, swapping in a one-liner is pretty satisfying, too:
 
     a, b = b, a;
 
@@ -93,10 +94,9 @@ This is an original concept that I am the most interested in building, and I can
 in the wild before. It's a very minimal form of procedural-style encapsulation, with a few
 architectural side-effects that I think are worth exploring.
 
-Each struct declares which modules (essentially namespaces) are allowed to modify it. In other
-words, the struct specifies which modules have *access*. Anyone who doesn't have access sees the
-struct's fields with an implicit const qualifier. It's what a `friend namespace` would be, if ever
-there was such a thing. The simplest way to describe it is with a code demonstration:
+It boils down to this: each struct declares which modules (namespaces) are allowed to modify it. In
+other words, the struct specifies which modules have *access* to it. Anyone who doesn't have access
+sees the struct's fields as read-only. The simplest way to describe it is with a code demonstration:
 
     struct MyStruct {
       int a;
@@ -117,9 +117,11 @@ there was such a thing. The simplest way to describe it is with a code demonstra
       }
     }
 
+It's kind of like what a `friend namespace` would be, if ever there was such a thing.
+
 What's of particular interest to me, is how one can use this feature to structure code without
-having to draw hard lines between objects. Instead, write-access restriction just kind of flows from
-the top down.
+having to draw hard lines between objects. Instead, it seems that write-access restriction just kind
+of flows from the top down:
 
     struct Foo {
       // ...
@@ -168,13 +170,12 @@ they're robust in all possible use cases. Indeed, I think it would help structur
 have a clear object-oriented representation, or one which would require extensive use of callbacks
 and handlers.
 
-I can see it also turning out to be one giant mess of procedural code. Who knows.
+I can see it also turning out to be one giant mess of procedural code. But isn't everything?
 
 # znc (Zinc Compiler)
 
 I have a few thousand lines of Lua that spit out x86-64 assembly. Don't worry, it's just a
-prototype. One day I'll take a shot at writing it in C. It's not much yet, so here's some compiler
-output:
+prototype. One day I'll take a shot at writing it in C. Here's some sexy compiler output:
 
 ### Input file
 
