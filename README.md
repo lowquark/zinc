@@ -5,42 +5,48 @@ Zinc is my experimental, C-family language.
 
 ## Features
 
-As an embedded systems developer, I have a strong affinity for C, but am keenly aware of its
-limitations. Here's a list of features I'm working toward:
+Inspired by C, C++, and Lua, I've dreamt up a very simple, systems-level programming language with
+the following features:
 
   - Namespaces
   - Default initialization
-  - Usable strings
   - Multiple assignment & return values
-  - C++ lvalue references
+  - Lvalue references (C++)
   - Built-in data structures
   - Write-access restrictions
 
-The first 3 are pretty obvious to anyone who's used C for a prolonged period of time. The rest I
-describe in more detail below.
+One notable _anti-feature_ is that the language doesn't have true objects ---the kind with
+constructors, methods, and inheritance. Instead, it loosely associates structs to particular groups
+of functions through a novel write-access concept.
+
+It's not much yet, and it's going to change, but I'm hoping to put these features together into a
+cohesive programming language.
 
 ### Multiple assignment & return values
 
-Multiple return values makes returning status codes, or additional, optional information very
-convenient:
+It's possible I've had too much fun in Lua lately, but having multiple return values can make
+returning extra information very convenient:
 
     x, x_is_valid = complex_task(...);
     if(x_is_valid) {
       // ... use x
     }
 
-Not to mention, swapping in a one-liner is *supremely* satisfying:
+Not to mention, swapping in a one-liner is pretty satisfying, too.
 
     a, b = b, a;
 
-Of course, because `=` invokes copying, using a dedicated `swap(...)` function would be far more
-efficient for container objects like `vector` or `map`. It's possible I've had too much fun in Lua
-and Python lately. In any case, this is a prominent feature I'm working toward.
+_Disclaimer: Because `=` invokes copying, using a dedicated swap operation would be a lot more
+efficient for containers like `vector`._
+
+Abstractly, having multiple return values makes APIs more symmetric in terms of input and
+output. I think it would be nice to have in a systems language.
 
 ### Built-in data structures
 
-I've spent a lot of time implementing data structures in C. People have made fun of me for it.
-Sadly, I haven't found a satisfying way to implement them generically. Part of me has decided they
+I've spent a lot of time implementing data structures in C, so much that people have made fun of me
+for it. Even still, I haven't found a satisfying way to implement them generically. (If anyone had,
+maybe C wouldn't be so notoriously buggy.) Part of me has decided that complex data structures
 should be provided directly by the language. For example:
 
     function main() {
@@ -55,15 +61,16 @@ should be provided directly by the language. For example:
       }
     }
 
-where `append(...)` is a magic built-in function, kind of like `sizeof(...)`. Fundamentally, data
-structures like these should be possible without exposing destructors, copy constructors, and
-assignment operators into the language itself. I think it _just might work_.
+where `append(...)` is a magic built-in function, kind of like `sizeof(...)`. By making a few
+assumptions about the contents of contained objects (see below), data structures like these should
+be possible without exposing destructors, copy constructors, and assignment operators into the
+language itself. It's a lot of effort, but I think it _just might work_.
 
-### C++ lvalue references
+### Lvalue references
 
 I've been mulling over an oddball sort of _anti-feature_ that might just be cool in practice.
-Instead of proper C pointers, I want to experiment with C++ lvalue references that you're not
-allowed to store in structs:
+Instead of proper C pointers, I want to experiment with C++-_style_ lvalue references that you're
+not allowed to store in structs:
 
     struct MyStruct {
       const OtherStruct & other_struct; // This is an error, no references outside of functions
@@ -75,41 +82,42 @@ allowed to store in structs:
       do_something(other_struct) // Passed by reference (or copied, depending on signature)
     }
 
-This is pretty restrictive, but I think there are reasonable workarounds for pointers. For example,
-you can always just store the array index of a neighboring struct, instead of storing its address
-directly.
+I'm not going to argue with you, this is pretty restrictive. But I also think there are some
+reasonable, data-oriented workarounds for pointers. For example, you can always store the array
+index of a neighboring struct, instead of storing its memory address directly.
 
-In return, the compiler can generate copy constructors, move constructors, and automatic
-serialization very easily. The implementation of built-in data structures is simplified too. Who
-knows? It just might be useful.
+By making these sacrifices, though, the compiler can generate copy constructors, move constructors,
+and automatic serialization very easily. The implementation of built-in data structures is
+simplified too. Who knows? It just might be useable.
 
 ### Write-access restrictions 
 
-This is another wierd one. The simplest way to describe this is with a code demonstration:
+For a given struct type, only the code within certain modules has the ability to modify structs of
+that type. Modules which contain those functions are said to have *access* to that type. The
+simplest way to describe it is with a code demonstration:
 
     struct MyStruct {
       int a;
-      access module_a;       // MyStruct grants access to functions within module_a
+      access my_module;     // MyStruct has granted access to my_module
     }
 
-    module module_a {
+    module my_module {
       function foo() {
         MyStruct my_struct;
-        my_struct.a = 5;     // module_a modifies a MyStruct - OK
+        my_struct.a = 5;    // OK - my_module has access to MyStruct. 
       }
     }
 
-    module module_b {
+    module other_module {
       function bar() {
         MyStruct my_struct;
-        my_struct.a = 5;     // Not OK! module_b does not have access to MyStruct.
+        my_struct.a = 5;     // Not OK - other_module does not have access to MyStruct.
       }
     }
 
-Basically, only certain modules are allowed to modify the contents of certain struct types ---those
-which have *access* to that type. This is the most primitive form of encapsulation that I can think
-of. What's interesting to me, is how one can use this feature to structure code without drawing hard
-lines for which methods are part of which objects.
+This is the most primitive form of encapsulation that I can think of. What's of particular interest
+to me, is how one can use this feature to structure code without having to draw hard lines between
+objects. Instead, the idea is that write-access restriction just kind of flows from the top down.
 
     struct Foo {
       // ...
@@ -124,6 +132,7 @@ lines for which methods are part of which objects.
     struct Big {
       Foo foo;
       Bar bar;
+      access big;
     }
 
     module big {
@@ -135,22 +144,27 @@ lines for which methods are part of which objects.
 
     module big:foo_subsystem {
       function do_foo(Big b) {
-        // I still have access to data in b, but I have specific priviledges within B
+        // I still have access to data in b, but I have specific privileges within B
       }
     }
 
     module big:bar_subsystem {
       function do_bar(Big b) {
-        // I still have access to data in b, but I have specific priviledges within B
+        // I still have access to data in b, but I have specific privileges within B
       }
     }
 
 In this example, `struct Big` is assumed to be some kind of God class, which is divided into `Foo`
-and `Bar`: logically distinct concepts with fragile state that shouldn't be altered by anyone who
-isn't in the loop. With the `access` concept, the compiler can help protect data integrity without
-the programmer having to create independent, use-anywhere objects.
+and `Bar` ---logically distinct concepts with fragile internal state that shouldn't be altered by
+anyone who isn't in the loop. As part of its complex task, `big` divides up responsibility between
+its subsystems, and it does so without sacrificing scope ---a method call would be entirely
+restricted to the contents of `Foo` or `Bar`, requiring creation of a separate object API.
 
-I have a feeling this should scale pretty well. I think it's worth giving a shot.
+With the `access` concept, I'm hoping the compiler can help protect data integrity in complex
+processes without the programmer having to divide everything up into objects, fretting over whether
+they're robust in all possible use cases. Indeed, I think it would help structure code that doesn't
+have a clear object-oriented representation, or one which would require extensive use of callbacks
+and handlers. It might also turn out to be one giant mess. Who knows.
 
 # znc (Zinc Compiler)
 
