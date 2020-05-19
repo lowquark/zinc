@@ -611,9 +611,12 @@ local function generate(ir_prog, outfile)
 
   for i,ir_subr in ipairs(ir_prog.subroutines) do
     -- Allocate hardware registers
+    io.write('Allocating hardware registers for IR subroutine: `'..ir_subr.name..'`\n')
     lsra(ir_subr, #oprand_reg_t)
     -- Print to console for shits and giggles
+    io.write('\nResultant IR:\n')
     ir.dump_subroutine(ir_subr)
+    io.write('\n')
     -- Generate code
     ctx.subroutine_id = i
     emit_subroutine(ctx, ir_subr)

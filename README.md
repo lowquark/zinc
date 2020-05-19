@@ -194,7 +194,7 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
         int64 r = 3;
         int64 u = 2;
         int64 v = 4;
-        int64 astro, v = my_module:bla(my_module:bla(r, r, r), u, v);
+        int64 astro, v = bla(bla(r, r, r), u, v);
         int64 a, int64 b = 1, 0;
         a, b = b, a;
         astro = astro + b + v;
@@ -212,10 +212,14 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
           RETURN
             ADD 
               ADD 
-                VARIABLE a
-                VARIABLE b
-              VARIABLE c
-            VARIABLE a
+                LVALUE
+                  REFERENCE a
+                LVALUE
+                  REFERENCE b
+              LVALUE
+                REFERENCE c
+            LVALUE
+              REFERENCE a
       FUNCTION main () -> (int64 ret)
         BLOCK
           ASSIGNMENT
@@ -234,13 +238,18 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
             DECLARATION int64 astro
             REFERENCE v
             :=
-              CALL my_module:bla
-                CALL my_module:bla
-                  VARIABLE r
-                  VARIABLE r
-                  VARIABLE r
-                VARIABLE u
-                VARIABLE v
+              CALL bla
+                CALL bla
+                  LVALUE
+                    REFERENCE r
+                  LVALUE
+                    REFERENCE r
+                  LVALUE
+                    REFERENCE r
+                LVALUE
+                  REFERENCE u
+                LVALUE
+                  REFERENCE v
           ASSIGNMENT
             DECLARATION int64 a
             DECLARATION int64 b
@@ -251,204 +260,225 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
             REFERENCE a
             REFERENCE b
             :=
-              VARIABLE b
-              VARIABLE a
+              LVALUE
+                REFERENCE b
+              LVALUE
+                REFERENCE a
           ASSIGNMENT
             REFERENCE astro
             :=
               ADD 
                 ADD 
-                  VARIABLE astro
-                  VARIABLE b
-                VARIABLE v
+                  LVALUE
+                    REFERENCE astro
+                  LVALUE
+                    REFERENCE b
+                LVALUE
+                  REFERENCE v
           RETURN
-            VARIABLE astro
+            LVALUE
+              REFERENCE astro
 
 ### Compilation:
 
-    i0 would be used in mov 2 after being assigned in mov 1
-    local `r` is in register r0
-    local `u` is in register r1
-    local `v` is in register r2
-    local `astro` is in register r3
-    local `a` is in register r5
-    local `b` is in register r6
-    r5 would be used in mov 2 after being assigned in mov 1
+    Adding ( variable ( variable_type ( primitive hard_type int64 ) ) -> a0) to local scope under `a`
+    Adding ( variable ( variable_type ( primitive hard_type int64 ) ) -> a1) to local scope under `b`
+    Adding ( variable ( variable_type ( primitive hard_type int64 ) ) -> a2) to local scope under `c`
 
 ### Intermediate representation:
 
-    sub my_module$bla (int64,int64,int64 : int64,int64)
-      r0 := i0 + i1
-      r1 := r0 + i2
-      r2 := i0
-      i0 := r1
-      i1 := r2
+    sub z$bla (3)
+      s0 := a0 + a1
+      s1 := s0 + a2
+      b0 := s1
+      b1 := a0
       ret
-    sub my_module$main ( : int64)
-      r0 := 3
-      r1 := 2
-      r2 := 4
-      (r4, ~) := my_module$bla (r0, r0, r0)
-      (r3, r2) := my_module$bla (r4, r1, r2)
-      r5 := 1
-      r6 := 0
-      r7 := r5
-      r5 := r6
-      r6 := r7
-      r8 := r3 + r6
-      r9 := r8 + r2
-      r3 := r9
-      i0 := r3
+    sub z$main (0)
+      s0 := 3
+      s1 := 2
+      s2 := 4
+      s4 := z$bla (s0, s0, s0)
+      s3, s2 := z$bla (s4, s1, s2)
+      s7 := 1
+      s8 := 0
+      s5 := s7
+      s6 := s8
+      s9 := s6
+      s10 := s5
+      s5 := s9
+      s6 := s10
+      s11 := s3 + s6
+      s12 := s11 + s2
+      s3 := s12
+      b0 := s3
       ret
 
 ### Liveness analysis and linear scan register allocation:
 
-    r0 is live on [1, 2)
-    r1 is live on [2, 4)
-    r2 is live on [3, 5)
-    map r0 -> r0
-    map r1 -> r1
-    map r2 -> r2
-    sub my_module$bla (int64,int64,int64 : int64,int64)
-      r0 := i0 + i1
-      r1 := r0 + i2
-      r2 := i0
-      i0 := r1
-      i1 := r2
+    Allocating hardware registers for IR subroutine: `z$bla`
+    s0 is live on [1, 2)
+    s1 is live on [2, 3)
+    map s0 -> r0
+    map s1 -> r1
+
+    Resultant IR:
+    sub z$bla (3)
+      r0 := a0 + a1
+      r1 := r0 + a2
+      b0 := r1
+      b1 := a0
       ret
-    r0 is live on [1, 4)
-    r1 is live on [2, 5)
-    r2 is live on [3, 12)
-    r4 is live on [4, 5)
-    r3 is live on [5, 14)
-    r5 is live on [6, 8)
-    r6 is live on [7, 11)
-    r7 is live on [8, 10)
-    r8 is live on [11, 12)
-    r9 is live on [12, 13)
-    map r0 -> r0
-    map r1 -> r1
-    map r2 -> r2
-    map r4 -> r3
-    map r3 -> r4
-    map r5 -> r5
-    map r6 -> r0
-    map r7 -> r3
-    map r8 -> r1
-    map r9 -> r5
-    sub my_module$main ( : int64)
+
+    Allocating hardware registers for IR subroutine: `z$main`
+    s0 is live on [1, 4)
+    s1 is live on [2, 5)
+    s2 is live on [3, 15)
+    s4 is live on [4, 5)
+    s3 is live on [5, 17)
+    s7 is live on [6, 8)
+    s8 is live on [7, 9)
+    s5 is live on [8, 11)
+    s6 is live on [9, 14)
+    s9 is live on [10, 12)
+    s10 is live on [11, 13)
+    s11 is live on [14, 15)
+    s12 is live on [15, 16)
+    map s0 -> r0
+    map s1 -> r1
+    map s2 -> r2
+    map s4 -> r3
+    map s3 -> r4
+    map s7 -> r5
+    map s8 -> r0
+    map s5 -> r3
+    map s6 -> r1
+    map s9 -> r5
+    map s10 -> r0
+    map s11 -> r3
+    map s12 -> r5
+
+    Resultant IR:
+    sub z$main (0)
       r0 := 3
       r1 := 2
       r2 := 4
-      (r3, ~) := my_module$bla (r0, r0, r0)
-      (r4, r2) := my_module$bla (r3, r1, r2)
+      r3 := z$bla (r0, r0, r0)
+      r4, r2 := z$bla (r3, r1, r2)
       r5 := 1
       r0 := 0
       r3 := r5
-      r5 := r0
+      r1 := r0
+      r5 := r1
       r0 := r3
-      r1 := r4 + r0
-      r5 := r1 + r2
+      r3 := r5
+      r1 := r0
+      r3 := r4 + r1
+      r5 := r3 + r2
       r4 := r5
-      i0 := r4
+      b0 := r4
       ret
 
 ### Resulting assembly (AT&T Syntax):
 
             .text
 
-            .globl my_module$bla
-            .type my_module$bla, @function
-    my_module$bla:
+            .globl z$bla
+            .type z$bla, @function
+    z$bla:
             push %rbp
-            mov  %rsp, %rbp
-            sub  $0, %rsp
-            #  r0 := i0 + i1
-            mov  32(%rbp), %rbx
+            movq %rsp, %rbp
+            subq $16, %rsp
+            #  r0 := a0 + a1
+            movq 32(%rbp), %rbx
             addq 24(%rbp), %rbx
-            #  r1 := r0 + i2
-            mov  %rbx, %rdx
+            #  r1 := r0 + a2
+            movq %rbx, %rdx
             addq 16(%rbp), %rdx
-            #  r2 := i0
-            mov  32(%rbp), %r8
-            #  i0 := r1
-            mov  %rdx, 32(%rbp)
-            #  i1 := r2
-            mov  %r8, 24(%rbp)
+            #  b0 := r1
+            movq %rdx, 48(%rbp)
+            #  b1 := a0
+            movq 32(%rbp), %rax
+            movq %rax, 40(%rbp)
             #  ret
-            mov  %rbp, %rsp
+            movq %rbp, %rsp
             pop  %rbp
             ret
 
-            .globl my_module$main
-            .type my_module$main, @function
-    my_module$main:
+            .globl z$main
+            .type z$main, @function
+    z$main:
             push %rbp
-            mov  %rsp, %rbp
-            sub  $0, %rsp
+            movq %rsp, %rbp
+            subq $64, %rsp
             #  r0 := 3
-            mov  $3, %rbx
+            movq $3, %rbx
             #  r1 := 2
-            mov  $2, %rdx
+            movq $2, %rdx
             #  r2 := 4
-            mov  $4, %r8
-            #  (r3, ~) := my_module$bla (r0, r0, r0)
+            movq $4, %r8
+            #  r3 := z$bla (r0, r0, r0)
             push %rbx
             push %rdx
             push %r8
             push %r10
             push %r11
-            sub  $24, %rsp
-            mov  %rbx, -48(%rbp)
-            mov  %rbx, -56(%rbp)
-            mov  %rbx, -64(%rbp)
-            call my_module$bla
-            mov  -48(%rbp), %r9
-            add  $24, %rsp
+            subq $32, %rsp
+            movq %rbx, -120(%rbp)
+            movq %rbx, -128(%rbp)
+            movq %rbx, -136(%rbp)
+            call z$bla
+            movq -112(%rbp), %r9
+            addq $32, %rsp
             pop %r11
             pop %r10
             pop %r8
             pop %rdx
             pop %rbx
-            #  (r4, r2) := my_module$bla (r3, r1, r2)
+            #  r4, r2 := z$bla (r3, r1, r2)
             push %rbx
             push %rdx
             push %r9
             push %r11
-            sub  $24, %rsp
-            mov  %r9, -40(%rbp)
-            mov  %rdx, -48(%rbp)
-            mov  %r8, -56(%rbp)
-            call my_module$bla
-            mov  -40(%rbp), %r10
-            mov  -48(%rbp), %r8
-            add  $24, %rsp
+            subq $40, %rsp
+            movq %r9, -120(%rbp)
+            movq %rdx, -128(%rbp)
+            movq %r8, -136(%rbp)
+            call z$bla
+            movq -104(%rbp), %r10
+            movq -112(%rbp), %r8
+            addq $40, %rsp
             pop %r11
             pop %r9
             pop %rdx
             pop %rbx
             #  r5 := 1
-            mov  $1, %r11
+            movq $1, %r11
             #  r0 := 0
-            mov  $0, %rbx
+            movq $0, %rbx
             #  r3 := r5
-            mov  %r11, %r9
-            #  r5 := r0
-            mov  %rbx, %r11
+            movq %r11, %r9
+            #  r1 := r0
+            movq %rbx, %rdx
+            #  r5 := r1
+            movq %rdx, %r11
             #  r0 := r3
-            mov  %r9, %rbx
-            #  r1 := r4 + r0
-            mov  %r10, %rdx
-            addq %rbx, %rdx
-            #  r5 := r1 + r2
-            mov  %rdx, %r11
+            movq %r9, %rbx
+            #  r3 := r5
+            movq %r11, %r9
+            #  r1 := r0
+            movq %rbx, %rdx
+            #  r3 := r4 + r1
+            movq %r10, %r9
+            addq %rdx, %r9
+            #  r5 := r3 + r2
+            movq %r9, %r11
             addq %r8, %r11
             #  r4 := r5
-            mov  %r11, %r10
-            #  i0 := r4
-            mov  %r10, 16(%rbp)
+            movq %r11, %r10
+            #  b0 := r4
+            movq %r10, 16(%rbp)
             #  ret
-            mov  %rbp, %rsp
+            movq %rbp, %rsp
             pop  %rbp
             ret
 
@@ -456,12 +486,12 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
             .type main, @function
     main:
             push %rbp
-            mov  %rsp, %rbp
-            sub  $8, %rsp
-            call my_module$main
-            mov  -8(%rbp), %rax
-            add  $8, %rsp
-            mov  %rbp, %rsp
+            movq %rsp, %rbp
+            subq $8, %rsp
+            call z$main
+            movq -8(%rbp), %rax
+            addq $8, %rsp
+            movq %rbp, %rsp
             pop  %rbp
             ret
 

@@ -379,7 +379,7 @@ local function dump_module_decl(decl, level)
     io.write(')\n')
     dump_stmt(decl.block, level + 1)
   elseif decl.type == 'member' then
-    io.write(indent..'MEMBER '..decl.name..' : '..type_name_path..'\n')
+    io.write(indent..'MEMBER '..decl.name..' : '..decl.type_name_path..'\n')
   else
     error('unknown decl declaration type `'..decl.type..'`')
   end
