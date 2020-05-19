@@ -1,6 +1,9 @@
 
 ----------------------------------------------------------------------------------------------------
 -- cc - (c)ompiler (c)onstructions
+----------------------------------------------------------------------------------------------------
+
+local pprint = require 'pprint'
 
 local function assert_type(val, typestr, ...)
   assert(type(val) == typestr, ...)
@@ -19,6 +22,7 @@ local cc = { }
 
 cc.hard_type_methods = { }
 cc.hard_type_meta = { __index = cc.hard_type_methods }
+
 function cc.hard_type_meta.__tostring(self)
   if self.__variant == 'primitive' then
     return '( primitive hard_type '..self.name..' )'
@@ -28,6 +32,7 @@ function cc.hard_type_meta.__tostring(self)
     return '( '..self.__variant..' hard_type ? )'
   end
 end
+
 function cc.hard_type_primitive(name)
   assert(type(name) == 'string')
   return setmetatable({
@@ -35,6 +40,7 @@ function cc.hard_type_primitive(name)
     name = name,
   }, cc.hard_type_meta)
 end
+
 function cc.hard_type_struct(fields)
   assert(type(fields) == 'table')
   for i,f in ipairs(fields) do
@@ -46,6 +52,7 @@ function cc.hard_type_struct(fields)
     fields = deepcopy(fields)
   }, cc.hard_type_meta)
 end
+
 function cc.hard_type_array(element_type, quantity)
   assert(getmetatable(element_type) == cc.hard_type_meta)
   assert(type(quantity) == 'number')
@@ -65,6 +72,7 @@ cc.type_int64 = cc.hard_type_primitive('int64')
 
 cc.variable_type_methods = { }
 cc.variable_type_meta = { __index = cc.variable_type_methods }
+
 function cc.variable_type_meta.__tostring(self)
   local str = '( variable_type '
   if self.const then
@@ -77,6 +85,7 @@ function cc.variable_type_meta.__tostring(self)
   str = str..')'
   return str
 end
+
 function cc.variable_type(const, hard_type, reference)
   assert(type(const) == 'boolean')
   assert(getmetatable(hard_type) == cc.hard_type_meta)
@@ -93,6 +102,11 @@ end
 
 cc.variable_methods = { }
 cc.variable_meta = { __index = cc.variable_methods }
+
+function cc.variable_meta.__tostring(self)
+  return '( variable '..tostring(self.type)..' -> '..tostring(self.ir_id)..')'
+end
+
 function cc.variable(type_, ir_id)
   assert(type(type_) == 'table')
   assert(type(ir_id) == 'string')
@@ -108,6 +122,7 @@ end
 
 cc.function_methods = { }
 cc.function_meta = { __index = cc.function_methods }
+
 function cc.function_(name, ast_func, ir_subr)
   assert(type(name) == 'string')
   assert(type(ast_func) == 'table')
@@ -124,6 +139,7 @@ end
 --
 -- An expression proxy might be a literal, or an lvalue.
 -- Keep in mind, it may be behind you.
+
 cc.expression_proxy_methods = { }
 cc.expression_proxy_meta = { __index = cc.expression_proxy_methods }
 
@@ -150,6 +166,7 @@ end
 -- cc.lvalue_proxy
 --
 -- An lvalue proxy might be a variable, or an element of an array.
+
 cc.lvalue_proxy_methods = { }
 cc.lvalue_proxy_meta = { __index = cc.lvalue_proxy_methods }
 
@@ -173,6 +190,85 @@ function cc.lvalue_proxy_array_elem(var, expr)
     variable = var,
     expression = expr
   }, cc.lvalue_proxy_meta)
+end
+
+----------------------------------------------------------------------------------------------------
+-- cc.block_stack
+--
+-- Implements a data structure which conveniently tracks stack allocations and local variable scope
+-- during AST traversal
+
+cc.block_stack_methods = { }
+cc.block_stack_meta = { __index = cc.block_stack_methods }
+
+function cc.block_stack_methods:enter_block()
+  local bottom_block = self.bottom_block
+  -- Create a new block, inheriting the bottom (current) block's stack index and scope
+  new_block = { parent = bottom_block,
+                stack_index = bottom_block.stack_index,
+                locals = { } }
+  -- This is the bottom now
+  self.bottom_block = new_block
+  -- Return to verify correct exit
+  return new_block
+end
+
+function cc.block_stack_methods:exit_block(given_block)
+  assert(type(given_block) == 'table')
+  local bottom_block = self.bottom_block
+  local parent = bottom_block.parent
+  -- Ensure that there is a block to free
+  assert(parent, 'Unbalanced enter/exit')
+  -- Optionally ensure that we're exiting the expected block
+  if given_block then assert(bottom_block == given_block, 'Unbalanced enter/exit') end
+  -- Remove top block
+  self.bottom_block = parent
+end
+
+function cc.block_stack_methods:stack_alloc(size)
+  assert(type(size) == 'number')
+  local block = self.bottom_block
+  -- Increment stack_index by size
+  local offset = block.stack_index
+  block.stack_index = block.stack_index + size
+  -- Return new allocation
+  return offset, size
+end
+
+function cc.block_stack_methods:add_variable(var)
+  assert(getmetatable(var) == cc.variable_meta)
+  -- Append to list of locals
+  local locals = self.bottom_block.locals
+  locals[#locals + 1] = var
+end
+
+function cc.block_stack_methods:name_variable(name, var)
+  assert(type(name) == 'string')
+  assert(getmetatable(var) == cc.variable_meta)
+  -- Insert in map of locals
+  local locals = self.bottom_block.locals
+  locals[name] = var
+end
+
+function cc.block_stack_methods:find_variable(name)
+  assert(type(name) == 'string')
+  -- Start at the bottom, and work our way out
+  local block = self.bottom_block
+  while block do
+    -- Return if found in this block
+    local var = block.locals[name]
+    if var then
+      return var
+    end
+    -- Continue to parent of this block
+    block = block.parent
+  end
+end
+
+function cc.block_stack()
+  return setmetatable({
+    bottom_block = { locals = { }, stack_index = 0 },
+  }, cc.block_stack_meta)
 end
 
 return cc

@@ -1,6 +1,6 @@
 
 ----------------------------------------------------------------------------------------------------
--- Compile AST into IR
+-- compile.lua - Compiles AST into IR code
 ----------------------------------------------------------------------------------------------------
 
 local ir = require 'ir'
@@ -8,7 +8,14 @@ local cc = require 'cc'
 local pprint = require 'pprint'
 
 ----------------------------------------------------------------------------------------------------
--- Utilities
+-- Error reporting
+
+-- Reports a compilation error and aborts
+local function report_error(ctx, str)
+  io.write('Compilation error on line ?, col ?: '..str..'\n')
+  io.write(debug.traceback())
+  os.exit(4)
+end
 
 -- Places correctly pluralized units on the given number and returns the combined string
 local function plz(n, singular, plural)
@@ -19,39 +26,11 @@ local function plz(n, singular, plural)
   end
 end
 
--- Reports a compilation error and aborts
-local function report_error(ctx, str)
-  io.write('Compilation error on line ?, col ?: '..str..'\n')
-  io.write(debug.traceback())
-  os.exit(4)
-end
-
--- TODO: All scope objects should be placed in language construction module
--- Duplicates the given scope table
-local function copy_scope(scope)
-  local new_scope = { }
-  for k,v in pairs(scope) do
-    new_scope[k] = scope[k]
-  end
-  return new_scope
-end
-
-local function deepcopy(t)
-  r = { }
-  for k,v in pairs(t) do
-    if v.type == 'table' then
-      r[k] = deepcopy(v)
-    else
-      r[k] = v
-    end
-  end
-  return r
-end
-
 ----------------------------------------------------------------------------------------------------
 -- Misc. allocations
 
 -- Returns a subroutine-unique label
+-- TODO: Why not program-unique?
 local function new_label(ctx)
   local idx = ctx.label_index
   ctx.label_index = ctx.label_index + 1
@@ -61,6 +40,7 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Local variable / block allocations
 
+-- Returns the number of machine words required to allocate the given type on the stack
 function type_stack_size(ctx, var_type)
   if var_type.reference == false and var_type.hard_type == cc.type_int64 then
     -- int64, one machine word c:
@@ -69,110 +49,61 @@ function type_stack_size(ctx, var_type)
   error('Failed to find stack size for type '..tostring(var_type))
 end
 
-function new_block(ctx)
-  local block_stack = ctx.block_stack
-  local top_block = block_stack[#block_stack]
-  local b
-
-  if top_block then
-    -- Create a new block, inheriting the top (current) block's stack index and scope
-    b = {
-      stack_index = top_block.stack_index,
-      scope = copy_scope(top_block.scope),
-      locals = { },
-    }
-  else
-    -- Create a top-level block
-    b = {
-      stack_index = 0,
-      scope = { },
-      locals = { },
-    }
-  end
-
-  -- Push this block
-  block_stack[#block_stack+1] = b
-end
-
-function free_block(ctx, b)
-  -- Ensure that there is a block to free
-  local block_stack = ctx.block_stack
-  assert(#block_stack > 0)
-
-  -- Optionally ensure that we're freeing the expected block
-  if b then assert(block_stack[#block_stack] == b) end
-
-  -- This is where destructors would be called, e.g.:
-  -- for i,l in ipairs(b.locals) do ... end
-
-  -- Remove top block
-  block_stack[#block_stack] = nil
-end
-
--- Attempts to create a local variable in the current block
+-- Creates a local variable of the given type
+-- Returns the constructed variable
 --   ctx       : Compiler context
 --   var_type  : cc.variable_type
 --   -> cc.variable
 function new_local(ctx, var_type)
-  -- Find top block
   local block_stack = ctx.block_stack
-  assert(#block_stack > 0)
-  local b = block_stack[#block_stack]
-
   -- Calculate necessary storage space, in machine words
   local size = type_stack_size(ctx, var_type)
-
-  -- Allocate on stack
-  local offset = b.stack_index
-  b.stack_index = b.stack_index + size
-
-  -- Create an entry for a new local in the current subroutine
+  -- Perform stack allocation
+  local offset = block_stack:stack_alloc(size)
+  -- Create an entry for a new stack local in the current subroutine
   local id = ir.create_local(ctx.subroutine, offset, size)
   -- Create official variable object
   local var = cc.variable(var_type, id)
-
+  -- Register unnamed variable (for destruction)
+  block_stack:add_variable(var)
   -- Return constructed variable
   return var
 end
 
+-- Adds the given local variable to the current scope under the given name
 function add_to_scope(ctx, name, var)
-  -- Find top block
   local block_stack = ctx.block_stack
-  assert(#block_stack > 0)
-  local b = block_stack[#block_stack]
-
-  -- Shadowing is expressly forbidden
-  if b.scope[name] then
+  -- Ensure no shadowing occurs
+  if block_stack:find_variable(name) then
     report_error(ctx, '`'..name..'` was already declared in this scope.')
   end
-
-  -- Associate this variable with the given name in the current scope
-  b.scope[name] = var
+  -- Name in current scope
+  block_stack:name_variable(name, var)
 end
 
--- Returns the declaration corresponding to the named variable
+-- Finds the variable corresponding to the given name path
+-- Returns the variable in question
+-- Reports a compilation error on failure
 --   ctx       : Compiler context
 --   name_path : ast.name_path
 --   -> cc.variable
 local function find_variable(ctx, name_path)
-  -- Find top block
-  local block_stack = ctx.block_stack
-  assert(#block_stack > 0)
-  local b = block_stack[#block_stack]
-
+  -- TODO: Add full paths to names? I guess full names can only correspond to members of a module.
+  -- Hence, we should really only search a module scope stack in this case
   if #name_path > 1 then
     io.write('WARNING: Ignoring absolute path during search for variable '..name_path..'\n')
   end
-
-  local var = b.scope[name_path[1]]
-  if var then
-    return var
-  else
+  -- Just use last name in the path for now
+  local name = name_path[#name_path]
+  local var = ctx.block_stack:find_variable(name)
+  -- Callers assume this never fails
+  if not var then
     report_error(ctx, '`'..name_path..'` was not found in this scope.')
   end
+  return var
 end
 
--- Creates a new function declaration and adds it to the current module scope
+-- Creates a new function declaration and adds it to the current module scope.
 --   ctx      : Compiler context
 --   name     : string
 --   ast_func : ast.function_declaration
@@ -201,6 +132,9 @@ local function find_function(ctx, name_path)
   end
   return func_decl
 end
+
+----------------------------------------------------------------------------------------------------
+-- Language type deduction
 
 local function compute_type(ctx, ast_type_spec)
   if ast_type_spec.name_path[#ast_type_spec.name_path] == 'int64' then
@@ -493,6 +427,17 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Statement generation
 
+function enter_block(ctx)
+  return ctx.block_stack:enter_block()
+end
+
+function exit_block(ctx, b)
+  -- This is where destructors would be called, e.g.:
+  -- for i,l in ipairs(top_block.locals) do ... end
+
+  ctx.block_stack:exit_block(b)
+end
+
 -- Generates IR code which implements an AST statement
 function emit_statement(ctx, ast_stmt)
   local h = emit_statement_h[ast_stmt.type]
@@ -506,7 +451,7 @@ end
 emit_statement_h['if'] = function(ctx, ast_stmt)
   -- Create block for temporaries
   -- Outside both statements seems to be a safe option.
-  local b = new_block(ctx)
+  local b = enter_block(ctx)
 
   if ast_stmt.else_statement then
     -- If and else
@@ -541,12 +486,12 @@ emit_statement_h['if'] = function(ctx, ast_stmt)
   end
 
   -- Clear temporaries
-  free_block(ctx, b)
+  exit_block(ctx, b)
 end
 
 emit_statement_h['return'] = function(ctx, ast_stmt)
   -- Create block for temporaries
-  local b = new_block(ctx)
+  local b = enter_block(ctx)
 
   -- Assign function results to output argument registers
   for i,expr in ipairs(ast_stmt.expressions) do
@@ -558,7 +503,7 @@ emit_statement_h['return'] = function(ctx, ast_stmt)
   emit(ctx, ir.ret())
 
   -- Clear temporaries
-  free_block(ctx, b)
+  exit_block(ctx, b)
 end
 
 function emit_statement_h.assignment(ctx, ast_stmt)
@@ -583,7 +528,7 @@ function emit_statement_h.assignment(ctx, ast_stmt)
   end
 
   -- Create block for temporaries
-  local b = new_block(ctx)
+  local b = enter_block(ctx)
 
   local first_expr = ast_stmt.expressions[1]
 
@@ -644,7 +589,7 @@ function emit_statement_h.assignment(ctx, ast_stmt)
   end
 
   -- Clear temporaries
-  free_block(ctx, b)
+  exit_block(ctx, b)
 
   for i,pd in ipairs(post_declarations) do
     add_to_scope(ctx, pd[1], pd[2])
@@ -653,7 +598,7 @@ end
 
 function emit_statement_h.block(ctx, ast_stmt)
   -- New block, new you
-  local b = new_block(ctx)
+  local b = enter_block(ctx)
 
   -- Emit substatements
   for i,ast_substmt in ipairs(ast_stmt) do
@@ -661,12 +606,12 @@ function emit_statement_h.block(ctx, ast_stmt)
   end
 
   -- Bye bye block
-  free_block(ctx, b)
+  exit_block(ctx, b)
 end
 
 function emit_statement_h.call(ctx, ast_stmt)
   -- Create block for temporaries
-  local b = new_block(ctx)
+  local b = enter_block(ctx)
 
   -- Evaluate the call expression's expressions and save operands
   local expr_ops = { }
@@ -682,21 +627,19 @@ function emit_statement_h.call(ctx, ast_stmt)
   emit(ctx, ir.call({ }, func.ir_subroutine.name, expr_ops))
 
   -- Clear temporaries
-  free_block(ctx, b)
+  exit_block(ctx, b)
 end
 
 ----------------------------------------------------------------------------------------------------
 -- Function generation
 
-local function emit_function(ctx, ast_func)
+function emit_function(ctx, ast_func)
   -- Create a new IR subroutine for this function
   local subr = ir.subroutine('z$'..ast_func.name)
   -- Declare function in the current module scope (we will continue to generate it)
   local func_decl = new_function(ctx, ast_func.name, ast_func, subr)
 
-  ctx.block_stack = { }
-  -- Top-level block for this function (no stack allocations - arguments only)
-  new_block(ctx)
+  ctx.block_stack = cc.block_stack()
 
   -- Allocate argument registers and populate initial local scope
   for i,ast_arg_decl in ipairs(ast_func.arguments) do
@@ -706,7 +649,9 @@ local function emit_function(ctx, ast_func)
     -- Allocate this argument
     local ir_id = ir.create_argument(subr)
     -- Place in local scope
-    add_to_scope(ctx, name, cc.variable(arg_type, ir_id))
+    local var = cc.variable(arg_type, ir_id)
+    io.write('Adding '..tostring(var)..' to local scope under `'..name..'`\n')
+    add_to_scope(ctx, name, var)
   end
 
   -- Allocate return registers
