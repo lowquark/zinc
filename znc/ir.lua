@@ -583,7 +583,7 @@ local function dump_statement(stmt)
 end
 
 function ir.dump_subroutine(subr)
-  io.write('sub '..subr.name..' ('..subr.size_arguments..')\n')
+  io.write('sub '..subr.name..' ('..subr.size_arguments..') -> ('..subr.size_returns..')\n')
   for i,stmt in ipairs(subr.statements) do
     dump_statement(stmt)
   end

@@ -109,7 +109,7 @@ cc.variable_methods = { }
 cc.variable_meta = { __index = cc.variable_methods }
 
 function cc.variable_meta.__tostring(self)
-  return '( variable '..tostring(self.type)..' -> '..tostring(self.ir_id)..')'
+  return '( variable '..tostring(self.type)..' -> '..tostring(self.ir_id)..' )'
 end
 
 function cc.variable(type_, ir_id)

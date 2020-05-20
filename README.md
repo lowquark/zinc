@@ -177,8 +177,13 @@ knows?
 
 # znc (Zinc Compiler)
 
-I have a few thousand lines of Lua that spit out x86-64 assembly. Don't worry, it's just a
-prototype. One day I'll take a shot at writing it in C. Here's some sexy compiler output:
+I have a few thousand lines of Lua that spit out x86-64 assembly. Don't worry, one day I'll take a
+shot at writing it in C.
+
+If you have GCC and Lua installed on a 64-bit Linux machine, clone the repository, navigate to
+`test/`, and run `./test-all` to run the unit tests.
+
+Otherwise, here's some sexy compiler output:
 
 ### Input file
 
@@ -279,21 +284,15 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
             LVALUE
               REFERENCE astro
 
-### Compilation:
-
-    Adding ( variable ( variable_type ( primitive hard_type int64 ) ) -> a0) to local scope under `a`
-    Adding ( variable ( variable_type ( primitive hard_type int64 ) ) -> a1) to local scope under `b`
-    Adding ( variable ( variable_type ( primitive hard_type int64 ) ) -> a2) to local scope under `c`
-
 ### Intermediate representation:
 
-    sub z$bla (3)
+    sub z$bla (3) -> (2)
       s0 := a0 + a1
       s1 := s0 + a2
       b0 := s1
       b1 := a0
       ret
-    sub z$main (0)
+    sub z$main (0) -> (1)
       s0 := 3
       s1 := 2
       s2 := 4
@@ -322,7 +321,7 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
     map s1 -> r1
 
     Resultant IR:
-    sub z$bla (3)
+    sub z$bla (3) -> (2)
       r0 := a0 + a1
       r1 := r0 + a2
       b0 := r1
@@ -358,7 +357,7 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
     map s12 -> r5
 
     Resultant IR:
-    sub z$main (0)
+    sub z$main (0) -> (1)
       r0 := 3
       r1 := 2
       r2 := 4
@@ -389,16 +388,16 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
             movq %rsp, %rbp
             subq $16, %rsp
             #  r0 := a0 + a1
-            movq 32(%rbp), %rbx
+            movq 16(%rbp), %rbx
             addq 24(%rbp), %rbx
             #  r1 := r0 + a2
             movq %rbx, %rdx
-            addq 16(%rbp), %rdx
+            addq 32(%rbp), %rdx
             #  b0 := r1
-            movq %rdx, 48(%rbp)
+            movq %rdx, 40(%rbp)
             #  b1 := a0
-            movq 32(%rbp), %rax
-            movq %rax, 40(%rbp)
+            movq 16(%rbp), %rax
+            movq %rax, 48(%rbp)
             #  ret
             movq %rbp, %rsp
             pop  %rbp
@@ -422,13 +421,13 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
             push %r8
             push %r10
             push %r11
-            subq $32, %rsp
-            movq %rbx, -120(%rbp)
-            movq %rbx, -128(%rbp)
-            movq %rbx, -136(%rbp)
+            subq $40, %rsp
+            movq %rbx, 0(%rsp)
+            movq %rbx, 8(%rsp)
+            movq %rbx, 16(%rsp)
             call z$bla
-            movq -112(%rbp), %r9
-            addq $32, %rsp
+            movq 24(%rsp), %r9
+            addq $40, %rsp
             pop %r11
             pop %r10
             pop %r8
@@ -440,12 +439,12 @@ prototype. One day I'll take a shot at writing it in C. Here's some sexy compile
             push %r9
             push %r11
             subq $40, %rsp
-            movq %r9, -120(%rbp)
-            movq %rdx, -128(%rbp)
-            movq %r8, -136(%rbp)
+            movq %r9, 0(%rsp)
+            movq %rdx, 8(%rsp)
+            movq %r8, 16(%rsp)
             call z$bla
-            movq -104(%rbp), %r10
-            movq -112(%rbp), %r8
+            movq 24(%rsp), %r10
+            movq 32(%rsp), %r8
             addq $40, %rsp
             pop %r11
             pop %r9

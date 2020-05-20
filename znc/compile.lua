@@ -29,8 +29,7 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Misc. allocations
 
--- Returns a subroutine-unique label
--- TODO: Why not program-unique?
+-- Returns a program-unique label
 local function new_label(ctx)
   local idx = ctx.label_index
   ctx.label_index = ctx.label_index + 1
@@ -77,6 +76,7 @@ function add_to_scope(ctx, name, var)
   if block_stack:find_variable(name) then
     report_error(ctx, '`'..name..'` was already declared in this scope.')
   end
+  io.write('Adding '..tostring(var)..' to local scope under `'..name..'`\n')
   -- Name in current scope
   block_stack:name_variable(name, var)
 end
@@ -667,7 +667,6 @@ function emit_function(ctx, ast_func)
     local ir_id = ir.create_argument(subr)
     -- Place in local scope
     local var = cc.variable(arg_type, ir_id)
-    io.write('Adding '..tostring(var)..' to local scope under `'..name..'`\n')
     add_to_scope(ctx, name, var)
   end
 
@@ -689,10 +688,10 @@ end
 local function compile(ast)
   local ctx = { }
 
-  -- Map from absolute function names to declarations
+  -- Map from function names to declarations
   ctx.module_scope = { }
 
-  -- Counter for unique label generation
+  -- Counter for program-unique label generation
   ctx.label_index = 0
 
   -- Final object representing all compiled code
