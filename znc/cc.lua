@@ -3,6 +3,7 @@
 -- cc - (c)ompiler (c)onstructions
 ----------------------------------------------------------------------------------------------------
 
+local ir = require 'ir'
 local pprint = require 'pprint'
 
 local function assert_type(val, typestr, ...)
@@ -97,6 +98,10 @@ function cc.variable_type(const, hard_type, reference)
   }, cc.variable_type_meta)
 end
 
+function cc.is_variable_type(var_type)
+  return getmetatable(var_type) == cc.variable_type_meta
+end
+
 ----------------------------------------------------------------------------------------------------
 -- cc.variable
 
@@ -117,20 +122,26 @@ function cc.variable(type_, ir_id)
   }, cc.variable_meta)
 end
 
+function cc.is_variable(var)
+  return getmetatable(var) == cc.variable_meta
+end
+
 ----------------------------------------------------------------------------------------------------
 -- cc.function_
 
 cc.function_methods = { }
 cc.function_meta = { __index = cc.function_methods }
 
-function cc.function_(name, ast_func, ir_subr)
+function cc.function_(name, argument_types, return_types, ir_subr)
   assert(type(name) == 'string')
-  assert(type(ast_func) == 'table')
-  assert(type(ir_subr) == 'table')
+  for k,v in pairs(argument_types) do assert(cc.is_variable_type(v)) end
+  for k,v in pairs(return_types) do assert(cc.is_variable_type(v)) end
+  assert(ir.is_subroutine(ir_subr))
   return setmetatable({
     name = name,
-    ast_function = ast_func,
-    ir_subroutine = ir_subr
+    argument_types = argument_types,
+    return_types = return_types,
+    ir_subroutine = ir_subr,
   }, cc.function_meta)
 end
 

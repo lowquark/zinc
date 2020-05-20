@@ -104,16 +104,16 @@ local function find_variable(ctx, name_path)
 end
 
 -- Creates a new function declaration and adds it to the current module scope.
---   ctx      : Compiler context
---   name     : string
---   ast_func : ast.function_declaration
---   ir_subr  : ir.subroutine
+--   ctx            : Compiler context
+--   argument_types : A new sequence of argument types (not copied, referenced)
+--   return_types   : A new sequence of return types (not copied, referenced)
+--   ir_subr        : ir.subroutine
 --   -> cc.function_
-local function new_function(ctx, name, ast_func, ir_subr)
+local function new_function(ctx, name, argument_types, return_types, ir_subr)
   if ctx.module_scope[name] then
     report_error(ctx, 'Function `'..name..'` has already been declared in this scope.')
   else
-    local new_decl = cc.function_(name, ast_func, ir_subr)
+    local new_decl = cc.function_(name, argument_types, return_types, ir_subr)
     ctx.module_scope[name] = new_decl
     return new_decl
   end
@@ -399,8 +399,8 @@ end
 
 function eval_expression_h.call(ctx, expr)
   local func = find_function(ctx, expr.name_path)
-  if #func.ast_function.returns > 0 then
-    local dst_type = compute_type(ctx, func.ast_function.returns[1].type_specifier)
+  if #func.return_types > 0 then
+    local dst_type = func.return_types[1]
 
     -- Allocate temporary return storage for result
     -- TODO: lvalue_operands aren't supposed to be used as destination operands. But maybe they can
@@ -420,7 +420,7 @@ function eval_expression_h.call(ctx, expr)
 
     return cc.expression_proxy_lvalue(lvalue)
   else
-    report_error(ctx, 'Cannot use function which returns no values in expression')
+    report_error(ctx, 'Invalid use of returnless function in expression')
   end
 end
 
@@ -533,6 +533,8 @@ function emit_statement_h.assignment(ctx, ast_stmt)
   local first_expr = ast_stmt.expressions[1]
 
   if #ast_stmt.expressions == 1 and first_expr.type == 'call' then
+    -- TODO: Validate that the assigned types are compatible
+
     -- Call assignment
     -- Evaluate the call expression's lvalue operands
     local lvalue_ops = { }
@@ -566,6 +568,8 @@ function emit_statement_h.assignment(ctx, ast_stmt)
     end
 
     if #lvalues ~= 1 then
+      -- TODO: Validate that the assigned types are compatible
+
       -- Assign to temporaries, then move
       local temp_lvalues = { }
       local temp_exprs = { }
@@ -613,15 +617,15 @@ function emit_statement_h.call(ctx, ast_stmt)
   -- Create block for temporaries
   local b = enter_block(ctx)
 
-  -- Evaluate the call expression's expressions and save operands
+  -- Find this function
+  local func = find_function(ctx, ast_stmt.name_path)
+
+  -- Evaluate the call expression's argument expressions and save operands
   local expr_ops = { }
   for i,ast_expr in ipairs(ast_stmt.arguments) do
     local expr = eval_expression(ctx, ast_expr)
     expr_ops[i] = expression_operand(expr)
   end
-
-  -- Find this function
-  local func = find_function(ctx, ast_stmt.name_path)
 
   -- Call now (no lvalues)
   emit(ctx, ir.call({ }, func.ir_subroutine.name, expr_ops))
@@ -634,12 +638,25 @@ end
 -- Function generation
 
 function emit_function(ctx, ast_func)
+  -- Compute argument / return types
+  local argument_types = { }
+  local return_types = { }
+
+  for i,argument in ipairs(ast_func.arguments) do
+    argument_types[i] = compute_type(ctx, argument.type_specifier)
+  end
+  for i,return_ in ipairs(ast_func.returns) do
+    return_types[i] = compute_type(ctx, return_.type_specifier)
+  end
+
   -- Create a new IR subroutine for this function
   local subr = ir.subroutine('z$'..ast_func.name)
-  -- Declare function in the current module scope (we will continue to generate it)
-  local func_decl = new_function(ctx, ast_func.name, ast_func, subr)
 
+  -- Create stack structure
   ctx.block_stack = cc.block_stack()
+
+  -- Declare function in the current module scope (we will continue to generate its subroutine)
+  local func_decl = new_function(ctx, ast_func.name, argument_types, return_types, subr)
 
   -- Allocate argument registers and populate initial local scope
   for i,ast_arg_decl in ipairs(ast_func.arguments) do
@@ -661,19 +678,6 @@ function emit_function(ctx, ast_func)
 
   -- Initialize subroutine processing context
   ctx.subroutine = subr
-  ctx.ast_function = ast_func
-
-  -- Counter for unique label generation
-  ctx.label_index = 0
-
-  -- Location of next stack allocation
-  ctx.stack_index = 0
-
-  -- Index of next register allocation
-  ctx.register_index = 0
-
-  -- Map from local variable names to declarations
-  ctx.local_scope = local_scope
 
   -- Read statements from AST
   emit_statement_h.block(ctx, ast_func.block)
@@ -687,6 +691,9 @@ local function compile(ast)
 
   -- Map from absolute function names to declarations
   ctx.module_scope = { }
+
+  -- Counter for unique label generation
+  ctx.label_index = 0
 
   -- Final object representing all compiled code
   -- TODO: Stop hardcoding main module name

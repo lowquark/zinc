@@ -77,6 +77,7 @@ test 'src/basic-return.zn' 30
 test 'src/basic-swap-0.zn' 0
 test 'src/basic-swap-1.zn' 1
 test 'src/basic-call.zn' 30
+test 'src/basic-call-expr.zn' 0
 test 'src/if.zn' 7
 test 'src/cmp.zn' 0
 test 'src/structs.zn' 0

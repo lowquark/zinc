@@ -326,6 +326,10 @@ end
 local subroutine_methods = { }
 local subroutine_meta = { __index = subroutine_methods }
 
+function ir.is_subroutine(subr)
+  return getmetatable(subr) == subroutine_meta
+end
+
 function ir.subroutine(name)
   assert(type(name) == 'string')
   local subr = { name = name,

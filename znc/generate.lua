@@ -77,6 +77,31 @@ local emit_stmt = {}
 ----------------------------------------------------------------------------------------------------
 -- Utilities
 
+local function rbp_offset_stack(ctx, offset, size)
+  -- TODO: I'm certain we can reference %rsp, not %rbp
+  return -8 - 8*(offset + size - 1)
+end
+
+local function rbp_offset_argument(ctx, intval)
+  -- See diagram: Stack ABI Callee
+  return 8*(intval + 2)
+end
+
+local function rbp_offset_return(ctx, intval)
+  -- See diagram: Stack ABI Callee
+  return 8*(ctx.subroutine.size_arguments + intval + 2)
+end
+
+local function rsp_offset_call_argument(ctx, index)
+  -- See diagram: Stack ABI Caller
+  return 8*index
+end
+
+local function rsp_offset_call_return(ctx, index, num_args)
+  -- See diagram: Stack ABI Caller
+  return 8*(index + num_args)
+end
+
 -- Computes the x86 instruction operand corresponding to the given IR register/literal
 -- Returns the x86 operand and its corresponding type
 local function operand(ctx, ir_name)
@@ -98,19 +123,15 @@ local function operand(ctx, ir_name)
     if not local_data then
       error('Local '..ir_name..' is not defined!')
     end
-    -- Use rbp-relative operand corresponding to transformed stack location
-    local rbp_offset_bytes = -8*(local_data.offset + local_data.size)
+    local rbp_offset_bytes = rbp_offset_stack(ctx, local_data.offset, local_data.size)
     return rbp_offset_bytes..'(%rbp)', 'memory'
   elseif typestr == 'a' then
     -- Argument register
-    -- Use rbp-relative operand corresponding to argument's stack location
-    local rbp_offset_bytes = 8*(ctx.subroutine.size_arguments - intval + 1)
+    local rbp_offset_bytes = rbp_offset_argument(ctx, intval)
     return rbp_offset_bytes..'(%rbp)', 'memory'
   elseif typestr == 'b' then
-    -- Argument register
-    -- Use rbp-relative operand corresponding to argument's stack location
-    local rbp_offset_bytes = 8*(ctx.subroutine.size_arguments +
-                                ctx.subroutine.size_returns - intval + 1)
+    -- Return register
+    local rbp_offset_bytes = rbp_offset_return(ctx, intval)
     return rbp_offset_bytes..'(%rbp)', 'memory'
   elseif intval then
     -- Literal
@@ -453,7 +474,7 @@ end
 function emit_stmt.call(ctx, ir_stmt)
   local target_sub = ir.find_subroutine(ctx.program, ir_stmt.name)
   if not target_sub then
-    error('Subroutine '..ir_stmt.name..' not found')
+    error('Subroutine `'..ir_stmt.name..'` not found')
   end
 
   local return_ops = { }
@@ -481,16 +502,15 @@ function emit_stmt.call(ctx, ir_stmt)
   end
 
   -- Allocate stack argument space
-  local arg_stack_idx = ctx.stack_index
-  local input_size = #ir_stmt.return_regs + #ir_stmt.argument_regs
+  local input_size = target_sub.size_returns + target_sub.size_arguments
   if input_size > 0 then
     emit_stack_alloc(ctx, input_size)
   end
 
   -- Push arguments
   for i=1,#argument_ops do
-    local rbp_offset_bytes = -8*(arg_stack_idx + i + #ir_stmt.return_regs)
-    emit_mov(ctx, argument_ops[i], argument_types[i], rbp_offset_bytes..'(%rbp)', 'memory')
+    local rbp_offset_bytes = rsp_offset_call_argument(ctx, i - 1)
+    emit_mov(ctx, argument_ops[i], argument_types[i], rbp_offset_bytes..'(%rsp)', 'memory')
   end
 
   -- Emit actual call
@@ -499,8 +519,8 @@ function emit_stmt.call(ctx, ir_stmt)
   -- Grab return values
   for i=1,#ir_stmt.return_regs do
     if return_ops[i] then
-      local rbp_offset_bytes = -8*(arg_stack_idx + i)
-      emit_mov(ctx, rbp_offset_bytes..'(%rbp)', 'memory', return_ops[i], return_types[i])
+      local rbp_offset_bytes = rsp_offset_call_return(ctx, i - 1, #argument_ops)
+      emit_mov(ctx, rbp_offset_bytes..'(%rsp)', 'memory', return_ops[i], return_types[i])
     end
   end
 
@@ -600,7 +620,7 @@ local function emit_subroutine(ctx, ir_subr)
 end
 
 -- Translates the given IR program into x86-64 AT&T assembler, and writes to outfile
--- XXX: This modifies ir_prog!
+-- TODO: This modifies ir_prog! Is that a problem?
 local function generate(ir_prog, outfile)
   local ctx = { }
   ctx.program = ir_prog
