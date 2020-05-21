@@ -58,7 +58,7 @@ ast.dump(syntax_tree)
 
 io.write(divider)
 
-proto_code = compile(syntax_tree)
+proto_code = compile(syntax_tree, 'my_module')
 
 io.write(divider)
 

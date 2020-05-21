@@ -103,34 +103,28 @@ local function find_variable(ctx, name_path)
   return var
 end
 
--- Creates a new function declaration and adds it to the current module scope.
+-- Adds the given function object to the current module's function scope
+-- Throws an error if the function name has already been declared
 --   ctx            : Compiler context
---   argument_types : A new sequence of argument types (not copied, referenced)
---   return_types   : A new sequence of return types (not copied, referenced)
---   ir_subr        : ir.subroutine
---   -> cc.function_
-local function new_function(ctx, name, argument_types, return_types, ir_subr)
-  if ctx.module_scope[name] then
+--   name           : string
+--   func           : cc.function_
+local function add_function(ctx, name, func)
+  if ctx.module_stack:find_function_local(ctx, name) then
     report_error(ctx, 'Function `'..name..'` has already been declared in this scope.')
-  else
-    local new_decl = cc.function_(name, argument_types, return_types, ir_subr)
-    ctx.module_scope[name] = new_decl
-    return new_decl
   end
+  ctx.module_stack:add_function(name, func)
 end
 
 -- Returns the declaration corresponding to the named function
--- TODO: Stop punting on absolute paths
 --   ctx       : Compiler context
 --   name_path : ast.name_path
 --   -> cc.function
 local function find_function(ctx, name_path)
-  local name_str = tostring(name_path)
-  local func_decl = ctx.module_scope[name_str]
-  if not func_decl then
-    report_error(ctx, 'Function `'..name_str..'` was not found in this scope.')
+  local func = ctx.module_stack:find_function(name_path)
+  if not func then
+    report_error(ctx, 'Function `'..name_path..'` was not found in this scope.')
   end
-  return func_decl
+  return func
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -649,14 +643,19 @@ function emit_function(ctx, ast_func)
     return_types[i] = compute_type(ctx, return_.type_specifier)
   end
 
+  local subr_name = 'z$'..table.concat(ctx.module_stack.name_path, '$')..'$'..ast_func.name
+
+  io.write('subr_name: '..subr_name..'\n')
   -- Create a new IR subroutine for this function
-  local subr = ir.subroutine('z$'..ast_func.name)
+  local subr = ir.subroutine(subr_name)
 
   -- Create stack structure
   ctx.block_stack = cc.block_stack()
 
+  local func = cc.function_(ast_func.name, argument_types, return_types, subr)
+
   -- Declare function in the current module scope (we will continue to generate its subroutine)
-  local func_decl = new_function(ctx, ast_func.name, argument_types, return_types, subr)
+  add_function(ctx, ast_func.name, func)
 
   -- Allocate argument registers and populate initial local scope
   for i,ast_arg_decl in ipairs(ast_func.arguments) do
@@ -685,30 +684,41 @@ function emit_function(ctx, ast_func)
   ir.add_subroutine(ctx.program, subr)
 end
 
-local function compile(ast)
+local function compile(ast, main_module)
   local ctx = { }
 
   -- Map from function names to declarations
-  ctx.module_scope = { }
+  ctx.module_stack = cc.module_stack()
 
   -- Counter for program-unique label generation
   ctx.label_index = 0
 
   -- Final object representing all compiled code
-  -- TODO: Stop hardcoding main module name
-  ctx.program = ir.program('my_module')
+  ctx.program = ir.program(main_module)
 
   -- Compile each function into a subroutine
   for i,ast_fdecl in ipairs(ast) do
     if ast_fdecl.type == 'module' then
       local ast_module = ast_fdecl
+
+      for i,name in ipairs(ast_module.name_path) do
+        ctx.module_stack:enter_module(name)
+      end
+
       for i,module_decl in ipairs(ast_module.declarations) do
         if module_decl.type == 'function' then
           emit_function(ctx, module_decl)
         end
       end
+
+      for i=1,#ast_module.name_path do
+        ctx.module_stack:exit_module()
+      end
     end
   end
+
+  ctx.module_stack:dump()
+
   return ctx.program
 end
 

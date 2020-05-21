@@ -213,32 +213,31 @@ cc.block_stack_methods = { }
 cc.block_stack_meta = { __index = cc.block_stack_methods }
 
 function cc.block_stack_methods:enter_block()
-  local bottom_block = self.bottom_block
-  -- Create a new block, inheriting the bottom (current) block's stack index and scope
-  new_block = { parent = bottom_block,
-                stack_index = bottom_block.stack_index,
+  local top_block = self.top_block
+  -- Create a new block table, inheriting the top (current) block's stack index and scope
+  new_block = { parent = top_block,
+                stack_index = top_block.stack_index,
                 locals = { } }
-  -- This is the bottom now
-  self.bottom_block = new_block
+  -- This is the top now
+  self.top_block = new_block
   -- Return to verify correct exit
   return new_block
 end
 
 function cc.block_stack_methods:exit_block(given_block)
-  assert(type(given_block) == 'table')
-  local bottom_block = self.bottom_block
-  local parent = bottom_block.parent
+  local top_block = self.top_block
+  local parent = top_block.parent
   -- Ensure that there is a block to free
   assert(parent, 'Unbalanced enter/exit')
   -- Optionally ensure that we're exiting the expected block
-  if given_block then assert(bottom_block == given_block, 'Unbalanced enter/exit') end
+  if given_block then assert(top_block == given_block, 'Unbalanced enter/exit') end
   -- Remove top block
-  self.bottom_block = parent
+  self.top_block = parent
 end
 
 function cc.block_stack_methods:stack_alloc(size)
   assert(type(size) == 'number')
-  local block = self.bottom_block
+  local block = self.top_block
   -- Increment stack_index by size
   local offset = block.stack_index
   block.stack_index = block.stack_index + size
@@ -249,7 +248,7 @@ end
 function cc.block_stack_methods:add_variable(var)
   assert(getmetatable(var) == cc.variable_meta)
   -- Append to list of locals
-  local locals = self.bottom_block.locals
+  local locals = self.top_block.locals
   locals[#locals + 1] = var
 end
 
@@ -257,14 +256,14 @@ function cc.block_stack_methods:name_variable(name, var)
   assert(type(name) == 'string')
   assert(getmetatable(var) == cc.variable_meta)
   -- Insert in map of locals
-  local locals = self.bottom_block.locals
+  local locals = self.top_block.locals
   locals[name] = var
 end
 
 function cc.block_stack_methods:find_variable(name)
   assert(type(name) == 'string')
-  -- Start at the bottom, and work our way out
-  local block = self.bottom_block
+  -- Start at the top, and work our way down
+  local block = self.top_block
   while block do
     -- Return if found in this block
     local var = block.locals[name]
@@ -278,8 +277,116 @@ end
 
 function cc.block_stack()
   return setmetatable({
-    bottom_block = { locals = { }, stack_index = 0 },
+    top_block = { locals = { }, stack_index = 0 },
   }, cc.block_stack_meta)
+end
+
+----------------------------------------------------------------------------------------------------
+-- cc.module_stack
+--
+
+cc.module_stack_methods = { }
+cc.module_stack_meta = { __index = cc.module_stack_methods }
+
+function cc.module_stack_methods:enter_module(name)
+  local top_module = self.top_module
+  -- Try to re-enter submodules
+  local next_module = top_module.submodules[name]
+  -- Create a new child module if needed
+  if not next_module then
+    next_module = { parent = top_module,
+                    name = name,
+                    submodules = { },
+                    functions = { } }
+    top_module.submodules[name] = next_module
+  end
+  -- This is the top now
+  self.top_module = next_module
+  -- Add name to current path
+  self.name_path[#self.name_path+1] = name
+  -- Return to verify correct exit
+  return next_module
+end
+
+function cc.module_stack_methods:exit_module(given_module)
+  local top_module = self.top_module
+  local parent = top_module.parent
+  -- Ensure that there is a module to free
+  assert(parent, 'Unbalanced enter/exit')
+  -- Optionally ensure that we're exiting the expected module
+  if given_module then assert(top_module == given_module, 'Unbalanced enter/exit') end
+  -- Remove top module
+  self.top_module = parent
+  -- Remove last name from current path
+  self.name_path[#self.name_path] = nil
+end
+
+local function function_search(module, name_path)
+  local mod = module
+  local nmods = #name_path-1
+  for i=1,nmods do
+    mod = mod.submodules[name_path[i]]
+    if not mod then
+      -- This path doesn't exist starting from this module.
+      -- Search parent
+      return function_search(module.parent, name_path)
+    end
+  end
+  local func = mod.functions[name_path[#name_path]]
+  if func then
+    -- Found!
+    return func
+  else
+    -- This path exists, but the function doesn't.
+    -- Search parent
+    return function_search(module.parent, name_path)
+  end
+end
+
+function cc.module_stack_methods:find_function(name_path)
+  return function_search(self.top_module, name_path)
+end
+
+function cc.module_stack_methods:find_function_local(name)
+  return self.top_module.functions[name]
+end
+
+local function dump_module(module, level)
+  local indent = string.rep('  ', level)
+  local indent2 = string.rep('  ', level+1)
+  if module.name then
+    io.write(indent..module.name..' {\n')
+  else
+    io.write(indent..'{\n')
+  end
+  for k,sub in pairs(module.submodules) do
+    dump_module(sub, level+1)
+  end
+  for k,func in pairs(module.functions) do
+    io.write(indent2..func.name..'\n')
+  end
+  io.write(indent..'}\n')
+end
+
+function cc.module_stack_methods:dump()
+  for k,sub in pairs(self.global_module.submodules) do
+    dump_module(sub, 0)
+  end
+end
+
+function cc.module_stack_methods:add_function(name, func)
+  assert(type(name) == 'string')
+  assert(getmetatable(func) == cc.function_meta)
+  self.top_module.functions[name] = func
+end
+
+function cc.module_stack()
+  local global_module = { submodules = { }, functions = { } }
+  return setmetatable({
+    name_path = { },
+    global_module = global_module,
+    top_module = global_module,
+  }, cc.module_stack_meta)
 end
 
 return cc

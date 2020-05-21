@@ -643,6 +643,9 @@ local function generate(ir_prog, outfile)
     emit_line(ctx)
   end
 
+  -- Exactly one module shall be declared main, he who contains main, unto him shalt thou call
+  local main_subr_name = 'z$'..ir_prog.main_module..'$main'
+
   -- A nice, hardcoded main function
   emit(ctx, '.globl main')
   emit(ctx, '.type main, @function')
@@ -650,8 +653,7 @@ local function generate(ir_prog, outfile)
   emit(ctx, 'push %rbp')
   emit(ctx, 'movq %rsp, %rbp')
   emit(ctx, 'subq $8, %rsp')
-  -- TODO: The module containing main needs to be specified as a compiler argument
-  emit(ctx, 'call z$main')
+  emit(ctx, 'call '..main_subr_name)
   emit(ctx, 'movq -8(%rbp), %rax')
   emit(ctx, 'addq $8, %rsp')
   emit(ctx, 'movq %rbp, %rsp')
