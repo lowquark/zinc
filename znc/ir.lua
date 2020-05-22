@@ -584,9 +584,13 @@ end
 
 function ir.dump_subroutine(subr)
   io.write('sub '..subr.name..' ('..subr.size_arguments..') -> ('..subr.size_returns..')\n')
+  for i,l in ipairs(subr.locals) do
+    io.write('  local '..tostring(ir.localid(i-1))..' : '..l.offset..' ['..l.size..']\n')
+  end
   for i,stmt in ipairs(subr.statements) do
     dump_statement(stmt)
   end
+  io.write'\n'
 end
 
 -- Pretty-prints the given program object to io.output

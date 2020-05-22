@@ -11,7 +11,8 @@ local pprint = require 'pprint'
 -- Error reporting
 
 -- Reports a compilation error and aborts
-local function report_error(ctx, str)
+local function error_out(ctx, str)
+  -- TODO: Store line information in AST, report here
   io.write('Compilation error on line ?, col ?: '..str..'\n')
   io.write(debug.traceback())
   os.exit(4)
@@ -69,14 +70,20 @@ function new_local(ctx, var_type)
   return var
 end
 
--- Adds the given local variable to the current scope under the given name
+-- Adds the given variable to the current blocks's variable scope
+-- Throws an error if a variable with the given name already exists
+--
+-- Adds the given local variable to the current local scope under the given name
+--   ctx  : Compiler context
+--   name : string
+--   var  : cc.variable
 function add_to_scope(ctx, name, var)
   local block_stack = ctx.block_stack
   -- Ensure no shadowing occurs
   if block_stack:find_variable(name) then
-    report_error(ctx, '`'..name..'` was already declared in this scope.')
+    error_out(ctx, '`'..name..'` was already declared in this scope.')
   end
-  io.write('Adding '..tostring(var)..' to local scope under `'..name..'`\n')
+  io.write(string.rep('  ', #block_stack)..name..' <- '..tostring(var)..'\n')
   -- Name in current scope
   block_stack:name_variable(name, var)
 end
@@ -91,38 +98,37 @@ local function find_variable(ctx, name_path)
   -- TODO: Add full paths to names? I guess full names can only correspond to members of a module.
   -- Hence, we should really only search a module scope stack in this case
   if #name_path > 1 then
-    io.write('WARNING: Ignoring absolute path during search for variable '..name_path..'\n')
+    io.write('WARNING: Ignoring absolute path during search for variable '..
+             tostring(name_path)..'\n')
   end
   -- Just use last name in the path for now
-  local name = name_path[#name_path]
-  local var = ctx.block_stack:find_variable(name)
-  -- Callers assume this never fails
+  local var = ctx.block_stack:find_variable(name_path[#name_path])
   if not var then
-    report_error(ctx, '`'..name_path..'` was not found in this scope.')
+    error_out(ctx, '`'..tostring(name_path)..'` was not found in this scope.')
   end
   return var
 end
 
 -- Adds the given function object to the current module's function scope
--- Throws an error if the function name has already been declared
---   ctx            : Compiler context
---   name           : string
---   func           : cc.function_
+-- Throws an error if a function with the given name already exists
+--   ctx  : Compiler context
+--   name : string
+--   func : cc.function_
 local function add_function(ctx, name, func)
   if ctx.module_stack:find_function_local(ctx, name) then
-    report_error(ctx, 'Function `'..name..'` has already been declared in this scope.')
+    error_out(ctx, 'Function `'..name..'` has already been declared in this scope.')
   end
   ctx.module_stack:add_function(name, func)
 end
 
--- Returns the declaration corresponding to the named function
+-- Searches for the possibly abbreviated function path, according to the current scope
 --   ctx       : Compiler context
 --   name_path : ast.name_path
 --   -> cc.function
 local function find_function(ctx, name_path)
   local func = ctx.module_stack:find_function(name_path)
   if not func then
-    report_error(ctx, 'Function `'..name_path..'` was not found in this scope.')
+    error_out(ctx, 'Function `'..tostring(name_path)..'` was not found in this scope.')
   end
   return func
 end
@@ -130,6 +136,8 @@ end
 ----------------------------------------------------------------------------------------------------
 -- Language type deduction
 
+-- Computes a language type from its AST type specifier
+-- Nothing fancy yet, not until I try for arrays
 local function compute_type(ctx, ast_type_spec)
   if ast_type_spec.name_path[#ast_type_spec.name_path] == 'int64' then
     return cc.variable_type(false, cc.type_int64, false)
@@ -168,14 +176,19 @@ function emit(ctx, stmt)
   ir.add_statement(ctx.subroutine, stmt)
 end
 
+-- Creates a new temporary int64
+-- Returns its lvalue proxy and variable
+--   ctx : Compiler context
 function new_temp_int64(ctx)
   local out_var = new_local(ctx, cc.variable_type(false, cc.type_int64, false))
   return cc.lvalue_proxy_variable(out_var, true), out_var
 end
 
--- Call when only accepting int64 :p
+-- Validates that the given expression proxy evaluates to an int64
+--   ctx        : Compiler context
+--   expr_proxy : cc.expression_proxy
 function accept_only_int64(ctx, expr_proxy)
-  assert(getmetatable(expr_proxy) == cc.expression_proxy_meta)
+  assert(cc.is_expression_proxy(expr_proxy))
 
   local var_type
 
@@ -192,11 +205,14 @@ function accept_only_int64(ctx, expr_proxy)
 
   -- Must be a plain int64
   if not ( var_type.hard_type == cc.type_int64 and var_type.reference == false ) then
-    report_error(ctx, 'Only accepting int64 at this time')
+    error_out(ctx, 'Only accepting int64 at this time')
   end
 end
 
+-- Returns the IR operand corresponding to the given lvalue proxy
+--   lvalue_proxy : cc.lvalue_proxy
 function lvalue_operand(lvalue_proxy)
+  assert(cc.is_lvalue_proxy(lvalue_proxy))
   if lvalue_proxy.__variant == 'variable' then
     return lvalue_proxy.variable.ir_id
   elseif lvalue_proxy.__variant == 'array_element' then
@@ -204,7 +220,10 @@ function lvalue_operand(lvalue_proxy)
   end
 end
 
+-- Returns the IR operand corresponding to the given expression proxy
+--   expr_proxy : cc.expression_proxy
 function expression_operand(expr_proxy)
+  assert(cc.is_expression_proxy(expr_proxy))
   if expr_proxy.__variant == 'literal' then
     return ir.literal(expr_proxy.value)
   elseif expr_proxy.__variant == 'lvalue' then
@@ -212,9 +231,13 @@ function expression_operand(expr_proxy)
   end
 end
 
+-- Emits IR instructions to copy the given expression proxy into the given lvalue proxy
+--   ctx          : Compiler context
+--   lvalue_proxy : cc.lvalue_proxy
+--   expr_proxy   : cc.expression_proxy
 function assign_lvalue(ctx, lvalue_proxy, expr_proxy)
-  assert(getmetatable(lvalue_proxy) == cc.lvalue_proxy_meta)
-  assert(getmetatable(expr_proxy) == cc.expression_proxy_meta)
+  assert(cc.is_lvalue_proxy(lvalue_proxy))
+  assert(cc.is_expression_proxy(expr_proxy))
   if lvalue_proxy.__variant == 'variable' then
     emit(ctx, ir.mov(lvalue_proxy.variable.ir_id, expression_operand(expr_proxy)))
   elseif lvalue_proxy.__variant == 'array_element' then
@@ -222,6 +245,10 @@ function assign_lvalue(ctx, lvalue_proxy, expr_proxy)
   end
 end
 
+-- Emits IR instructions to copy the given expression proxies into the given lvalue proxies 1:1
+--   ctx          : Compiler context
+--   lvalue_proxy : sequence of cc.lvalue_proxy
+--   expr_proxy   : sequence of cc.expression_proxy
 function assign_lvalue_list(ctx, lvalue_proxies, expr_proxies)
   assert(#lvalue_proxies == #expr_proxies, 'List lengths must match.')
   for i=1,#lvalue_proxies do
@@ -414,7 +441,7 @@ function eval_expression_h.call(ctx, expr)
 
     return cc.expression_proxy_lvalue(lvalue)
   else
-    report_error(ctx, 'Invalid use of returnless function in expression')
+    error_out(ctx, 'Invalid use of returnless function in expression')
   end
 end
 
@@ -438,7 +465,7 @@ function emit_statement(ctx, ast_stmt)
   if h then
     h(ctx, ast_stmt)
   else
-    report_error(ctx, 'Unknown AST statement type `'..ast_stmt.type..'`')
+    error_out(ctx, 'Unknown AST statement type `'..ast_stmt.type..'`')
   end
 end
 
@@ -583,7 +610,7 @@ function emit_statement_h.assignment(ctx, ast_stmt)
     -- Good error.
     --error('Stop right there, criminal scum')
   else
-    report_error(ctx, 'Invalid assignment')
+    error_out(ctx, 'Invalid assignment')
   end
 
   -- Clear temporaries
@@ -643,13 +670,16 @@ function emit_function(ctx, ast_func)
     return_types[i] = compute_type(ctx, return_.type_specifier)
   end
 
+  local display_name = table.concat(ctx.module_stack.name_path, ':')..':'..ast_func.name
+  io.write('Compiling function '..display_name..'\n')
+
+  -- Generate subroutine name from concatenated full path
   local subr_name = 'z$'..table.concat(ctx.module_stack.name_path, '$')..'$'..ast_func.name
 
-  io.write('subr_name: '..subr_name..'\n')
   -- Create a new IR subroutine for this function
   local subr = ir.subroutine(subr_name)
 
-  -- Create stack structure
+  -- Create local scope & stack allocation structure
   ctx.block_stack = cc.block_stack()
 
   local func = cc.function_(ast_func.name, argument_types, return_types, subr)
@@ -682,6 +712,9 @@ function emit_function(ctx, ast_func)
 
   -- That's the subroutine
   ir.add_subroutine(ctx.program, subr)
+
+  -- XXX: Ew. This is stupid. Lets print diagnostics after compilation finishes.
+  io.write '\n'
 end
 
 local function compile(ast, main_module)
@@ -717,7 +750,9 @@ local function compile(ast, main_module)
     end
   end
 
-  ctx.module_stack:dump()
+  io.write 'Global function listing:\n'
+  cc.dump_modules(ctx.module_stack)
+  io.write '\n'
 
   return ctx.program
 end
