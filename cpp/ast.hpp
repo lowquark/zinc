@@ -48,9 +48,9 @@ namespace ast {
   typedef vector<string> name_path;
 
   struct type_specifier {
-    bool reference_qualified;
     bool const_qualified;
-    name_path name;
+    bool reference_qualified;
+    unique_ptr<ast::name_path> name_path;
   };
 
   // -----------------------------------------------------------------------------------------------
@@ -298,6 +298,18 @@ namespace ast {
   void visit(const statement & stmt, const statement_visitor & vis);
 
   // -----------------------------------------------------------------------------------------------
+  // Function stuff
+
+  struct function_argument {
+    unique_ptr<type_specifier> type;
+    string name;
+  };
+
+  struct function_return {
+    unique_ptr<type_specifier> type;
+  };
+
+  // -----------------------------------------------------------------------------------------------
   // Module items
 
   struct module_item {
@@ -325,12 +337,16 @@ namespace ast {
     function_declaration() : module_item(FUNCTION_DECLARATION) { }
 
     string name;
+    vector<function_argument> arguments;
+    vector<function_return> returns;
   };
 
   struct function_definition : public module_item {
     function_definition() : module_item(FUNCTION_DEFINITION) { }
 
     string name;
+    vector<function_argument> arguments;
+    vector<function_return> returns;
     statement_list statements;
   };
 

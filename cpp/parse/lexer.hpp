@@ -8,6 +8,7 @@ namespace parse {
   enum token_type {
     TOKEN_NULL,
     TOKEN_EOF,
+    TOKEN_CONST,
     TOKEN_FUNCTION,
     TOKEN_MODULE,
     TOKEN_STRUCT,
@@ -21,6 +22,8 @@ namespace parse {
     TOKEN_RSQUARE,
     TOKEN_LANGLE,
     TOKEN_RANGLE,
+    TOKEN_LARROW,
+    TOKEN_RARROW,
     TOKEN_COMMA,
     TOKEN_COLON,
     TOKEN_SEMICOLON,
@@ -30,6 +33,7 @@ namespace parse {
     TOKEN_ASTERISK,
     TOKEN_SLASH,
     TOKEN_TILDE,
+    TOKEN_AMPERSAND,
     TOKEN_LNOT,
     TOKEN_LOR,
     TOKEN_LAND,
@@ -42,6 +46,8 @@ namespace parse {
   struct token {
     token_type type;
     std::string value;
+
+    // TODO: Tokens should have line & col instead of lexer
 
     token(token_type type) : type(type) { }
     token(token_type type, const std::string & val) : type(type), value(val) { }

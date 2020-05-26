@@ -1,3 +1,13 @@
 
-module 02345 { } < > <= >= boo _boo
+module a:b {
+  function bla2 () -> ();
+
+  function bla (const int64 & a) -> () {
+  }
+}
+
+struct c:d:e {
+}
+
+struct k:j;
 

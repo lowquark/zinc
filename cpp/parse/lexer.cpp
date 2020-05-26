@@ -56,6 +56,9 @@ namespace parse {
       } else if(str == "struct") {
         next_token = token(TOKEN_STRUCT);
         return;
+      } else if(str == "const") {
+        next_token = token(TOKEN_CONST);
+        return;
       } else if(str == "function") {
         next_token = token(TOKEN_FUNCTION);
         return;
@@ -132,8 +135,14 @@ namespace parse {
     }
     if(next_char == '-') {
       eat_char();
-      next_token = token(TOKEN_DASH);
-      return;
+      if(next_char == '>') {
+        eat_char();
+        next_token = token(TOKEN_RARROW);
+        return;
+      } else {
+        next_token = token(TOKEN_DASH);
+        return;
+      }
     }
     if(next_char == '*') {
       eat_char();
@@ -180,8 +189,7 @@ namespace parse {
         next_token = token(TOKEN_LAND);
         return;
       } else {
-        // TODO: Binary and
-        next_token = token(TOKEN_NULL);
+        next_token = token(TOKEN_AMPERSAND);
         return;
       }
     }
@@ -201,6 +209,10 @@ namespace parse {
       if(next_char == '=') {
         eat_char();
         next_token = token(TOKEN_CLEQ);
+        return;
+      } else if(next_char == '-') {
+        eat_char();
+        next_token = token(TOKEN_LARROW);
         return;
       } else {
         next_token = token(TOKEN_LANGLE);
@@ -273,6 +285,7 @@ namespace parse {
 
   void test_lexer() {
     std::vector<token> all_tokens;
+    all_tokens.push_back(token(TOKEN_CONST));
     all_tokens.push_back(token(TOKEN_FUNCTION));
     all_tokens.push_back(token(TOKEN_MODULE));
     all_tokens.push_back(token(TOKEN_STRUCT));
@@ -286,6 +299,8 @@ namespace parse {
     all_tokens.push_back(token(TOKEN_RSQUARE));
     all_tokens.push_back(token(TOKEN_LANGLE));
     all_tokens.push_back(token(TOKEN_RANGLE));
+    all_tokens.push_back(token(TOKEN_LARROW));
+    all_tokens.push_back(token(TOKEN_RARROW));
     all_tokens.push_back(token(TOKEN_COMMA));
     all_tokens.push_back(token(TOKEN_COLON));
     all_tokens.push_back(token(TOKEN_SEMICOLON));
@@ -295,6 +310,7 @@ namespace parse {
     all_tokens.push_back(token(TOKEN_ASTERISK));
     all_tokens.push_back(token(TOKEN_SLASH));
     all_tokens.push_back(token(TOKEN_TILDE));
+    all_tokens.push_back(token(TOKEN_AMPERSAND));
     all_tokens.push_back(token(TOKEN_LNOT));
     all_tokens.push_back(token(TOKEN_LOR));
     all_tokens.push_back(token(TOKEN_LAND));
@@ -305,17 +321,17 @@ namespace parse {
 
     {
       std::stringstream ss;
-      ss << "function module struct bla 02345";
-      ss << "{}()[]<>";
-      ss << ",:;=+-*/~!||&&==!=<=>=";
+      ss << "const function module struct bla 02345";
+      ss << "{}()[]<><-->";
+      ss << ",:;=+-*/~&!||&&==!=<=>=";
       verify_tokens(std::move(ss), all_tokens);
     }
 
     {
       std::stringstream ss;
-      ss << "function\r\nmodule\tstruct\tbla\n02345";
-      ss << "{ } ( ) [ ] < > ";
-      ss << ", :; = +-*/ ~!|| && == != <= >=";
+      ss << "const\nfunction\r\nmodule\tstruct\tbla\n02345";
+      ss << "{ } ( ) [ ] < > <- ->";
+      ss << ", :; = +-*/ ~& !|| && == != <= >=";
       verify_tokens(std::move(ss), all_tokens);
     }
   }

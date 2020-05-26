@@ -38,6 +38,7 @@ int main(int argc, char ** argv) {
 
   ast::file ast = parse::parse(file);
 
+  /*
   ast::name_path name;
   name.emplace_back("aa");
   name.emplace_back("bb");
@@ -65,6 +66,7 @@ int main(int argc, char ** argv) {
     enc->items.emplace_back(std::move(def));
   }
   ast.items.emplace_back(std::move(enc));
+  */
 
   pp::dump(ast);
 

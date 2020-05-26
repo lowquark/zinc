@@ -205,7 +205,7 @@ namespace pp {
     if(ts.const_qualified) {
       s = s + "const ";
     }
-    s = s + str(ts.name);
+    s = s + str(*ts.name_path);
     if(ts.reference_qualified) {
       s = s + " &";
     }
@@ -396,11 +396,11 @@ namespace pp {
       }
 
       virtual void visit(const ast::function_declaration & decl) const override {
-        os << indent << "FUNCTION " << decl.name << std::endl;
+        os << indent << "FUNCTION-DECL " << decl.name << std::endl;
       }
 
       virtual void visit(const ast::function_definition & def) const override {
-        os << indent << "FUNCTION " << def.name << std::endl;
+        os << indent << "FUNCTION-DEF " << def.name << std::endl;
         for(auto & stmt : def.statements) {
           write(os, *stmt, level + 1);
         }
@@ -425,11 +425,11 @@ namespace pp {
       }
 
       virtual void visit(const ast::struct_declaration & decl) const override {
-        os << "STRUCT " << str(decl.name) << std::endl;
+        os << "STRUCT-DECL " << str(decl.name) << std::endl;
       }
 
       virtual void visit(const ast::struct_definition & def) const override {
-        os << "STRUCT " << str(def.name) << std::endl;
+        os << "STRUCT-DEF " << str(def.name) << std::endl;
       }
 
     private:
