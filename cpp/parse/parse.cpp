@@ -3,6 +3,8 @@
 #include <parse/lexer.hpp>
 #include <pp.hpp>
 
+#include <sstream>
+
 namespace parse {
   using std::vector;
   using std::unique_ptr;
@@ -13,9 +15,12 @@ namespace parse {
       case TOKEN_NULL: return "(null)";
       case TOKEN_EOF: return "EOF";
       case TOKEN_CONST: return "const";
+      case TOKEN_ELSE: return "else";
       case TOKEN_FUNCTION: return "function";
+      case TOKEN_IF: return "if";
       case TOKEN_MODULE: return "module";
       case TOKEN_STRUCT: return "struct";
+      case TOKEN_RETURN: return "return";
       case TOKEN_NAME: return "name";
       case TOKEN_INTEGER: return "integer";
       case TOKEN_LCURLY: return "'{'";
@@ -35,7 +40,7 @@ namespace parse {
       case TOKEN_PLUS: return "'+'";
       case TOKEN_DASH: return "'-'";
       case TOKEN_ASTERISK: return "'*'";
-      case TOKEN_SLASH: return "'/'";
+      case TOKEN_FSLASH: return "'/'";
       case TOKEN_TILDE: return "'~'";
       case TOKEN_AMPERSAND: return "'&'";
       case TOKEN_LNOT: return "'!'";
@@ -172,6 +177,350 @@ namespace parse {
     }
   }
 
+  unique_ptr<ast::lvalue> parse_lvalue(context & ctx) {
+    auto name = parse_name(ctx);
+    if(name) {
+      auto lvalue = make_unique<ast::lvalue_referential>();
+      lvalue->name = *name;
+      return lvalue;
+    }
+    return nullptr;
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // Expressions
+
+  unique_ptr<ast::expression> parse_expression(context & ctx);
+  unique_ptr<ast::expression> expect_expression(context & ctx);
+
+  unique_ptr<ast::expression> parse_expression_p0(context & ctx) {
+    if(parse_token(ctx, TOKEN_LPAREN)) {
+      auto subexpr = expect_expression(ctx);
+      expect_token(ctx, TOKEN_RPAREN);
+      return subexpr;
+    } else if(parse_token(ctx, TOKEN_DASH)) {
+      auto subexpr = parse_expression_p0(ctx);
+      return make_unique<ast::expression_neg>(std::move(subexpr));
+    } else if(parse_token(ctx, TOKEN_TILDE)) {
+      auto subexpr = parse_expression_p0(ctx);
+      return make_unique<ast::expression_bnot>(std::move(subexpr));
+    } else if(parse_token(ctx, TOKEN_LNOT)) {
+      auto subexpr = parse_expression_p0(ctx);
+      return make_unique<ast::expression_lnot>(std::move(subexpr));
+    } else if(ctx.lexer.next().type == TOKEN_INTEGER) {
+      int64_t value;
+      std::stringstream ss(ctx.lexer.next().value);
+      ss >> value;
+      ctx.lexer.read();
+      return make_unique<ast::expression_integer>(value);
+    }
+    // <name->path> [ '(' [ <arguments> ] ')' ]
+    auto st = ctx.lexer.save();
+    auto name_path = parse_name_path(ctx);
+    if(name_path) {
+      if(parse_token(ctx, TOKEN_LPAREN)) {
+        auto expr = make_unique<ast::expression_call>();
+        expr->name_path = std::move(name_path);
+        while(!parse_token(ctx, TOKEN_RPAREN)) {
+          // XXX TODO XXX: Function call expression arguments
+          abort_expected(ctx, "STOP RIGHT THERE CRIMINAL SCUM");
+        }
+        return expr;
+      }
+    }
+    // <lvalue>
+    ctx.lexer.restore(st);
+    auto lvalue = parse_lvalue(ctx);
+    if(lvalue) {
+      return make_unique<ast::expression_lvalue>(std::move(lvalue));
+    }
+    return nullptr;
+  }
+
+  unique_ptr<ast::expression> parse_expression_p1(context & ctx) {
+    // Parse first argument
+    auto subexpr = parse_expression_p0(ctx);
+    // Wrap if applicable
+    auto op_type = ctx.lexer.next().type;
+    while(op_type == TOKEN_ASTERISK || op_type == TOKEN_FSLASH) {
+      // Operand match, consume
+      ctx.lexer.read();
+      // Parse second argument
+      auto subexpr2 = parse_expression_p0(ctx);
+      // Replace with combined subexpressions
+      switch(op_type) {
+        case TOKEN_ASTERISK:
+          subexpr = make_unique<ast::expression_mul>(std::move(subexpr), std::move(subexpr2));
+          break;
+        case TOKEN_FSLASH:
+          subexpr = make_unique<ast::expression_div>(std::move(subexpr), std::move(subexpr2));
+          break;
+        default:
+          throw;
+          break;
+      }
+      op_type = ctx.lexer.next().type;
+    }
+    return subexpr;
+  }
+
+  unique_ptr<ast::expression> parse_expression_p2(context & ctx) {
+    // Parse first argument
+    auto subexpr = parse_expression_p1(ctx);
+    // Wrap if applicable
+    auto op_type = ctx.lexer.next().type;
+    while(op_type == TOKEN_PLUS || op_type == TOKEN_DASH) {
+      // Operand match, consume
+      ctx.lexer.read();
+      // Parse second argument
+      auto subexpr2 = parse_expression_p1(ctx);
+      // Replace with combined subexpressions
+      switch(op_type) {
+        case TOKEN_PLUS:
+          subexpr = make_unique<ast::expression_add>(std::move(subexpr), std::move(subexpr2));
+          break;
+        case TOKEN_DASH:
+          subexpr = make_unique<ast::expression_sub>(std::move(subexpr), std::move(subexpr2));
+          break;
+        default:
+          throw;
+          break;
+      }
+      op_type = ctx.lexer.next().type;
+    }
+    return subexpr;
+  }
+
+  unique_ptr<ast::expression> parse_expression_p3(context & ctx) {
+    // Parse first argument
+    auto subexpr = parse_expression_p2(ctx);
+    // Wrap if applicable
+    auto op_type = ctx.lexer.next().type;
+    while(op_type == TOKEN_LANGLE ||
+          op_type == TOKEN_CLEQ ||
+          op_type == TOKEN_RANGLE ||
+          op_type == TOKEN_CGEQ) {
+      // Operand match, consume
+      ctx.lexer.read();
+      // Parse second argument
+      auto subexpr2 = parse_expression_p2(ctx);
+      // Replace with combined subexpressions
+      switch(op_type) {
+        case TOKEN_LANGLE:
+          subexpr = make_unique<ast::expression_clt>(std::move(subexpr), std::move(subexpr2));
+          break;
+        case TOKEN_CLEQ:
+          subexpr = make_unique<ast::expression_cleq>(std::move(subexpr), std::move(subexpr2));
+          break;
+        case TOKEN_RANGLE:
+          subexpr = make_unique<ast::expression_cgt>(std::move(subexpr), std::move(subexpr2));
+          break;
+        case TOKEN_CGEQ:
+          subexpr = make_unique<ast::expression_cgeq>(std::move(subexpr), std::move(subexpr2));
+          break;
+        default:
+          throw;
+          break;
+      }
+      op_type = ctx.lexer.next().type;
+    }
+    return subexpr;
+  }
+
+  unique_ptr<ast::expression> parse_expression_p4(context & ctx) {
+    // Parse first argument
+    auto subexpr = parse_expression_p3(ctx);
+    // Wrap if applicable
+    auto op_type = ctx.lexer.next().type;
+    while(op_type == TOKEN_CEQ || op_type == TOKEN_CNEQ) {
+      // Operand match, consume
+      ctx.lexer.read();
+      // Parse second argument
+      auto subexpr2 = parse_expression_p3(ctx);
+      // Replace with combined subexpressions
+      switch(op_type) {
+        case TOKEN_CEQ:
+          subexpr = make_unique<ast::expression_ceq>(std::move(subexpr), std::move(subexpr2));
+          break;
+        case TOKEN_CNEQ:
+          subexpr = make_unique<ast::expression_cneq>(std::move(subexpr), std::move(subexpr2));
+          break;
+        default:
+          throw;
+          break;
+      }
+      op_type = ctx.lexer.next().type;
+    }
+    return subexpr;
+  }
+
+  unique_ptr<ast::expression> parse_expression_p5(context & ctx) {
+    // Parse first argument
+    auto subexpr = parse_expression_p4(ctx);
+    // Wrap if applicable
+    auto op_type = ctx.lexer.next().type;
+    while(op_type == TOKEN_LAND) {
+      // Operand match, consume
+      ctx.lexer.read();
+      // Parse second argument
+      auto subexpr2 = parse_expression_p4(ctx);
+      // Replace with combined subexpressions
+      switch(op_type) {
+        case TOKEN_LAND:
+          subexpr = make_unique<ast::expression_land>(std::move(subexpr), std::move(subexpr2));
+          break;
+        default:
+          throw;
+          break;
+      }
+      op_type = ctx.lexer.next().type;
+    }
+    return subexpr;
+  }
+
+  unique_ptr<ast::expression> parse_expression_p6(context & ctx) {
+    // Parse first argument
+    auto subexpr = parse_expression_p5(ctx);
+    // Wrap if applicable
+    auto op_type = ctx.lexer.next().type;
+    while(op_type == TOKEN_LOR) {
+      // Operand match, consume
+      ctx.lexer.read();
+      // Parse second argument
+      auto subexpr2 = parse_expression_p5(ctx);
+      // Replace with combined subexpressions
+      switch(op_type) {
+        case TOKEN_LOR:
+          subexpr = make_unique<ast::expression_lor>(std::move(subexpr), std::move(subexpr2));
+          break;
+        default:
+          throw;
+          break;
+      }
+      op_type = ctx.lexer.next().type;
+    }
+    return subexpr;
+  }
+
+  unique_ptr<ast::expression> parse_expression(context & ctx) {
+    return parse_expression_p6(ctx);
+  }
+
+  unique_ptr<ast::expression> expect_expression(context & ctx) {
+    auto expr = parse_expression(ctx);
+    if(expr) {
+      return expr;
+    }
+    abort_expected(ctx, "expression (e.g. x*5)");
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // Statements
+
+  unique_ptr<ast::statement> expect_statement(context & ctx);
+  unique_ptr<ast::statement> parse_if_statement(context & ctx);
+
+  // Tries to parse the rule: <return-statement>
+  unique_ptr<ast::statement_return> parse_return_statement(context & ctx) {
+    if(parse_token(ctx, TOKEN_RETURN)) {
+      auto stmt = make_unique<ast::statement_return>();
+      if(!parse_token(ctx, TOKEN_SEMICOLON)) {
+        do {
+          stmt->expressions.emplace_back(expect_expression(ctx));
+        } while(parse_token(ctx, TOKEN_COMMA));
+        expect_token(ctx, TOKEN_SEMICOLON);
+      }
+      return stmt;
+    }
+    return nullptr;
+  }
+
+  // Tries to parse the rule: <block>
+  unique_ptr<ast::statement_block> parse_block_statement(context & ctx) {
+    if(parse_token(ctx, TOKEN_LCURLY)) {
+      auto block = make_unique<ast::statement_block>();
+      while(!parse_token(ctx, TOKEN_RCURLY)) {
+        block->statements.emplace_back(expect_statement(ctx));
+      }
+      return block;
+    }
+    return nullptr;
+  }
+
+  // Tries to parse the rule: <block>
+  unique_ptr<ast::statement_block> expect_block_statement(context & ctx) {
+    auto stmt = parse_block_statement(ctx);
+    if(stmt) {
+      return stmt;
+    }
+    abort_expected(ctx, "block (e.g. { })");
+  }
+
+  // Tries to parse the rule: <else-body>
+  unique_ptr<ast::statement> parse_else_body(context & ctx) {
+    if(parse_token(ctx, TOKEN_ELSE)) {
+      auto block = parse_if_statement(ctx);
+      if(block) {
+        return block;
+      }
+      block = parse_block_statement(ctx);
+      if(block) {
+        return block;
+      }
+      abort_expected(ctx, "else block (e.g. `else if(...) { ... }` or `else { ... }`)");
+    }
+    return nullptr;
+  }
+
+  // Tries to parse the rule: <if-statement>
+  unique_ptr<ast::statement> parse_if_statement(context & ctx) {
+    if(parse_token(ctx, TOKEN_IF)) {
+      auto stmt = make_unique<ast::statement_if>();
+      expect_token(ctx, TOKEN_LPAREN);
+      stmt->condition = expect_expression(ctx);
+      expect_token(ctx, TOKEN_RPAREN);
+      stmt->if_block = expect_block_statement(ctx);
+      stmt->else_block = parse_else_body(ctx);
+      return stmt;
+    }
+    return nullptr;
+  }
+
+  // Tries to parse the rule: <function-call>
+  unique_ptr<ast::statement> parse_call_statement(context & ctx) {
+    // TODO:
+    return nullptr;
+  }
+
+  // Tries to parse the rule: <assignment>
+  unique_ptr<ast::statement> parse_assignment(context & ctx) {
+    // TODO:
+    return nullptr;
+  }
+
+  // Expects to parse the rule: <module-item>
+  unique_ptr<ast::statement> expect_statement(context & ctx) {
+    unique_ptr<ast::statement> item;
+
+    item = parse_return_statement(ctx);
+    if(item) { return item; }
+
+    item = parse_block_statement(ctx);
+    if(item) { return item; }
+
+    item = parse_if_statement(ctx);
+    if(item) { return item; }
+
+    item = parse_call_statement(ctx);
+    if(item) { return item; }
+
+    item = parse_assignment(ctx);
+    if(item) { return item; }
+
+    abort_expected(ctx, "statement (e.g. `x = 5;`)");
+    return item;
+  }
+
   // -----------------------------------------------------------------------------------------------
   // Module items
 
@@ -184,7 +533,7 @@ namespace parse {
       vector<ast::function_argument> arguments;
       vector<ast::function_return> returns;
 
-      // Arguments expected in parenthesis
+      // Arguments are expected in parenthesis
       expect_token(ctx, TOKEN_LPAREN);
       while(!parse_token(ctx, TOKEN_RPAREN)) {
         do {
@@ -196,7 +545,7 @@ namespace parse {
         } while(parse_token(ctx, TOKEN_COMMA));
       }
 
-      // If arrow is present, returns expected in parenthesis
+      // If arrow is present, returns are expected in parenthesis
       if(parse_token(ctx, TOKEN_RARROW)) {
         expect_token(ctx, TOKEN_LPAREN);
         while(!parse_token(ctx, TOKEN_RPAREN)) {
@@ -211,14 +560,13 @@ namespace parse {
         }
       }
 
+      auto block = parse_block_statement(ctx);
+
       // Definition if body present, declaration otherwise
-      if(parse_token(ctx, TOKEN_LCURLY)) {
+      if(block) {
         auto def = make_unique<ast::function_definition>();
         def->name = name;
-        while(!parse_token(ctx, TOKEN_RCURLY)) {
-          // TODO: Read statements
-          ctx.lexer.read();
-        }
+        def->block = std::move(block);
         return def;
       } else {
         auto decl = make_unique<ast::function_declaration>();

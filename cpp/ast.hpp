@@ -56,7 +56,6 @@ namespace ast {
   // -----------------------------------------------------------------------------------------------
   // Lvalues
 
-  // Declarations must be lvalues, in order to support multiple assignment
   struct lvalue {
     enum variantid {
       DECLARATIONAL,
@@ -105,6 +104,7 @@ namespace ast {
       LAND,
       LOR,
       CEQ,
+      CNEQ,
       CLT,
       CLEQ,
       CGT,
@@ -122,11 +122,19 @@ namespace ast {
 
   struct expression_unary_operator : public expression {
     expression_unary_operator(variantid v) : expression(v) { }
+    expression_unary_operator(variantid v, unique_ptr<expression> && subexpr)
+      : expression(v), subexpression(std::move(subexpr)) { }
     unique_ptr<expression> subexpression;
   };
 
   struct expression_binary_operator : public expression {
     expression_binary_operator(variantid v) : expression(v) { }
+    expression_binary_operator(variantid v,
+                               unique_ptr<expression> && subexpr_x,
+                               unique_ptr<expression> && subexpr_y)
+      : expression(v),
+        subexpression_x(std::move(subexpr_x)),
+        subexpression_y(std::move(subexpr_y)) { }
     unique_ptr<expression> subexpression_x;
     unique_ptr<expression> subexpression_y;
   };
@@ -135,66 +143,103 @@ namespace ast {
     int64_t value;
 
     expression_integer() : expression(INTEGER) { }
+    expression_integer(int64_t value) : expression(INTEGER), value(value) { }
   };
 
   struct expression_neg : public expression_unary_operator {
     expression_neg() : expression_unary_operator(NEG) { }
+    expression_neg(unique_ptr<expression> && expr)
+      : expression_unary_operator(NEG, std::move(expr)) { }
   };
 
   struct expression_bnot : public expression_unary_operator {
     expression_bnot() : expression_unary_operator(BNOT) { }
+    expression_bnot(unique_ptr<expression> && expr)
+      : expression_unary_operator(BNOT, std::move(expr)) { }
   };
 
   struct expression_lnot : public expression_unary_operator {
     expression_lnot() : expression_unary_operator(LNOT) { }
+    expression_lnot(unique_ptr<expression> && expr)
+      : expression_unary_operator(LNOT, std::move(expr)) { }
   };
 
   struct expression_add : public expression_binary_operator {
     expression_add() : expression_binary_operator(ADD) { }
+    expression_add(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(ADD, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_sub : public expression_binary_operator {
     expression_sub() : expression_binary_operator(SUB) { }
+    expression_sub(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(SUB, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_mul : public expression_binary_operator {
     expression_mul() : expression_binary_operator(MUL) { }
+    expression_mul(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(MUL, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_div : public expression_binary_operator {
     expression_div() : expression_binary_operator(DIV) { }
+    expression_div(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(DIV, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_land : public expression_binary_operator {
     expression_land() : expression_binary_operator(LAND) { }
+    expression_land(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(LAND, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_lor : public expression_binary_operator {
     expression_lor() : expression_binary_operator(LOR) { }
+    expression_lor(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(LOR, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_ceq : public expression_binary_operator {
     expression_ceq() : expression_binary_operator(CEQ) { }
+    expression_ceq(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(CEQ, std::move(expr_x), std::move(expr_y)) { }
+  };
+
+  struct expression_cneq : public expression_binary_operator {
+    expression_cneq() : expression_binary_operator(CNEQ) { }
+    expression_cneq(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(CNEQ, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_clt : public expression_binary_operator {
     expression_clt() : expression_binary_operator(CLT) { }
+    expression_clt(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(CLT, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_cleq : public expression_binary_operator {
     expression_cleq() : expression_binary_operator(CLEQ) { }
+    expression_cleq(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(CLEQ, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_cgt : public expression_binary_operator {
     expression_cgt() : expression_binary_operator(CGT) { }
+    expression_cgt(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(CGT, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_cgeq : public expression_binary_operator {
     expression_cgeq() : expression_binary_operator(CGEQ) { }
+    expression_cgeq(unique_ptr<expression> && expr_x, unique_ptr<expression> && expr_y)
+      : expression_binary_operator(CGEQ, std::move(expr_x), std::move(expr_y)) { }
   };
 
   struct expression_lvalue : public expression {
     expression_lvalue() : expression(LVALUE) { }
+    expression_lvalue(unique_ptr<ast::lvalue> && lvalue)
+      : expression(LVALUE), lvalue(std::move(lvalue)) { }
 
     unique_ptr<ast::lvalue> lvalue;
   };
@@ -202,7 +247,7 @@ namespace ast {
   struct expression_call : public expression {
     expression_call() : expression(CALL) { }
 
-    name_path name;
+    unique_ptr<ast::name_path> name_path;
     expression_list arguments;
   };
 
@@ -222,6 +267,7 @@ namespace ast {
       virtual void visit(const expression_lor & expr) const { }
 
       virtual void visit(const expression_ceq & expr) const { }
+      virtual void visit(const expression_cneq & expr) const { }
       virtual void visit(const expression_clt & expr) const { }
       virtual void visit(const expression_cleq & expr) const { }
       virtual void visit(const expression_cgt & expr) const { }
@@ -276,8 +322,8 @@ namespace ast {
     statement_if() : statement(IF) { }
 
     unique_ptr<expression> condition;
-    unique_ptr<statement> if_true;
-    unique_ptr<statement> if_false;
+    unique_ptr<statement> if_block;
+    unique_ptr<statement> else_block;
   };
 
   struct statement_return : public statement {
@@ -347,7 +393,7 @@ namespace ast {
     string name;
     vector<function_argument> arguments;
     vector<function_return> returns;
-    statement_list statements;
+    unique_ptr<statement_block> block;
   };
 
   class module_item_visitor {

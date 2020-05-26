@@ -289,6 +289,11 @@ namespace pp {
         write(os, *expr.subexpression_x, level + 1);
         write(os, *expr.subexpression_y, level + 1);
       }
+      virtual void visit(const ast::expression_cneq & expr) const override {
+        os << indent << "CNEQ" << std::endl;
+        write(os, *expr.subexpression_x, level + 1);
+        write(os, *expr.subexpression_y, level + 1);
+      }
       virtual void visit(const ast::expression_clt & expr) const override {
         os << indent << "CLT" << std::endl;
         write(os, *expr.subexpression_x, level + 1);
@@ -365,11 +370,11 @@ namespace pp {
         write(os, *stmt.condition, level + 1);
 
         os << indent << "THEN" << std::endl;
-        write(os, *stmt.if_true, level + 1);
+        write(os, *stmt.if_block, level + 1);
 
-        if(stmt.if_false) {
+        if(stmt.else_block) {
           os << indent << "ELSE" << std::endl;
-          write(os, *stmt.if_false, level + 1);
+          write(os, *stmt.else_block, level + 1);
         }
       }
 
@@ -401,9 +406,7 @@ namespace pp {
 
       virtual void visit(const ast::function_definition & def) const override {
         os << indent << "FUNCTION-DEF " << def.name << std::endl;
-        for(auto & stmt : def.statements) {
-          write(os, *stmt, level + 1);
-        }
+        write(os, *def.block, level + 1);
       }
 
     private:

@@ -3,6 +3,13 @@ module a:b {
   function bla2 () -> ();
 
   function bla (const int64 & a) -> () {
+    if(1) {
+      return -(5 + 5) || 1 * (30 / ~67 && 4 + bla);
+    } else if(1) {
+      return;
+    } else {
+      return;
+    }
   }
 }
 

@@ -56,11 +56,20 @@ namespace parse {
       } else if(str == "struct") {
         next_token = token(TOKEN_STRUCT);
         return;
+      } else if(str == "return") {
+        next_token = token(TOKEN_RETURN);
+        return;
       } else if(str == "const") {
         next_token = token(TOKEN_CONST);
         return;
+      } else if(str == "else") {
+        next_token = token(TOKEN_ELSE);
+        return;
       } else if(str == "function") {
         next_token = token(TOKEN_FUNCTION);
+        return;
+      } else if(str == "if") {
+        next_token = token(TOKEN_IF);
         return;
       } else {
         // Just a regular old name
@@ -151,7 +160,7 @@ namespace parse {
     }
     if(next_char == '/') {
       eat_char();
-      next_token = token(TOKEN_SLASH);
+      next_token = token(TOKEN_FSLASH);
       return;
     }
     if(next_char == '~') {
@@ -286,9 +295,12 @@ namespace parse {
   void test_lexer() {
     std::vector<token> all_tokens;
     all_tokens.push_back(token(TOKEN_CONST));
+    all_tokens.push_back(token(TOKEN_ELSE));
     all_tokens.push_back(token(TOKEN_FUNCTION));
+    all_tokens.push_back(token(TOKEN_IF));
     all_tokens.push_back(token(TOKEN_MODULE));
     all_tokens.push_back(token(TOKEN_STRUCT));
+    all_tokens.push_back(token(TOKEN_RETURN));
     all_tokens.push_back(token(TOKEN_NAME, "bla"));
     all_tokens.push_back(token(TOKEN_INTEGER, "02345"));
     all_tokens.push_back(token(TOKEN_LCURLY));
@@ -308,7 +320,7 @@ namespace parse {
     all_tokens.push_back(token(TOKEN_PLUS));
     all_tokens.push_back(token(TOKEN_DASH));
     all_tokens.push_back(token(TOKEN_ASTERISK));
-    all_tokens.push_back(token(TOKEN_SLASH));
+    all_tokens.push_back(token(TOKEN_FSLASH));
     all_tokens.push_back(token(TOKEN_TILDE));
     all_tokens.push_back(token(TOKEN_AMPERSAND));
     all_tokens.push_back(token(TOKEN_LNOT));
@@ -321,7 +333,7 @@ namespace parse {
 
     {
       std::stringstream ss;
-      ss << "const function module struct bla 02345";
+      ss << "const else function if module struct return bla 02345";
       ss << "{}()[]<><-->";
       ss << ",:;=+-*/~&!||&&==!=<=>=";
       verify_tokens(std::move(ss), all_tokens);
@@ -329,7 +341,7 @@ namespace parse {
 
     {
       std::stringstream ss;
-      ss << "const\nfunction\r\nmodule\tstruct\tbla\n02345";
+      ss << "const else\nfunction\r\n\r\rif\n module\tstruct\treturn bla\n02345";
       ss << "{ } ( ) [ ] < > <- ->";
       ss << ", :; = +-*/ ~& !|| && == != <= >=";
       verify_tokens(std::move(ss), all_tokens);

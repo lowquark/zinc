@@ -53,6 +53,9 @@ namespace ast {
       case ast::expression::CEQ:
         vis.visit(static_cast<const ast::expression_ceq &>(expr));
         break;
+      case ast::expression::CNEQ:
+        vis.visit(static_cast<const ast::expression_cneq &>(expr));
+        break;
       case ast::expression::CLT:
         vis.visit(static_cast<const ast::expression_clt &>(expr));
         break;
