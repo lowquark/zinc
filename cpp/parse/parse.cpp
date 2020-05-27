@@ -152,19 +152,21 @@ namespace parse {
 
     bool const_qual = parse_token(ctx, TOKEN_CONST);
     auto name_path = parse_name_path(ctx);
-    if(!name_path) {
+
+    if(name_path) {
+      bool ref_qual = parse_token(ctx, TOKEN_AMPERSAND);
+
+      // Type has been read, return
+      auto type = make_unique<ast::type_specifier>();
+      type->const_qualified = const_qual;
+      type->name_path = std::move(*name_path);
+      type->reference_qualified = ref_qual;
+      return type;
+    } else {
       // Not actually a type, boo
       ctx.lexer.restore(st);
       return nullptr;
     }
-    bool ref_qual = parse_token(ctx, TOKEN_AMPERSAND);
-
-    // Type read, return
-    auto type = make_unique<ast::type_specifier>();
-    type->const_qualified = const_qual;
-    type->name_path = std::move(name_path);
-    type->reference_qualified = ref_qual;
-    return type;
   }
 
   // Expects to parse the rule: <type-specifier>
@@ -177,7 +179,8 @@ namespace parse {
     }
   }
 
-  unique_ptr<ast::lvalue> parse_lvalue(context & ctx) {
+  // Tries to parse the rule: <lvalue-ref>
+  unique_ptr<ast::lvalue> parse_lvalue_ref(context & ctx) {
     auto name = parse_name(ctx);
     if(name) {
       auto lvalue = make_unique<ast::lvalue_referential>();
@@ -187,11 +190,51 @@ namespace parse {
     return nullptr;
   }
 
-  // -----------------------------------------------------------------------------------------------
-  // Expressions
+  unique_ptr<ast::lvalue> parse_lvalue(context & ctx) {
+    auto st = ctx.lexer.save();
+    // <type-specifier> <name>
+    auto type = parse_type_specifier(ctx);
+    if(type) {
+      auto name = parse_name(ctx);
+      if(name) {
+        auto lvalue = make_unique<ast::lvalue_declarational>();
+        lvalue->type = std::move(type);
+        lvalue->name = *name;
+        return lvalue;
+      }
+    }
+    ctx.lexer.restore(st);
+    // <lvalue-ref>
+    return parse_lvalue_ref(ctx);
+  }
+
+  // Expects to parse the rule: <lvalue>
+  unique_ptr<ast::lvalue> expect_lvalue(context & ctx) {
+    auto lvalue = parse_lvalue(ctx);
+    if(lvalue) {
+      return lvalue;
+    } else {
+      abort_expected(ctx, "lvalue (e.g. `a` or `int a`)");
+    }
+  }
 
   unique_ptr<ast::expression> parse_expression(context & ctx);
   unique_ptr<ast::expression> expect_expression(context & ctx);
+
+  ast::expression_list parse_argument_list(context & ctx) {
+    ast::expression_list list;
+    auto expr = parse_expression(ctx);
+    if(expr) {
+      list.emplace_back(std::move(expr));
+      while(parse_token(ctx, TOKEN_COMMA)) {
+        list.emplace_back(expect_expression(ctx));
+      }
+    }
+    return list;
+  }
+
+  // -----------------------------------------------------------------------------------------------
+  // Expressions
 
   unique_ptr<ast::expression> parse_expression_p0(context & ctx) {
     if(parse_token(ctx, TOKEN_LPAREN)) {
@@ -219,18 +262,16 @@ namespace parse {
     auto name_path = parse_name_path(ctx);
     if(name_path) {
       if(parse_token(ctx, TOKEN_LPAREN)) {
-        auto expr = make_unique<ast::expression_call>();
-        expr->name_path = std::move(name_path);
-        while(!parse_token(ctx, TOKEN_RPAREN)) {
-          // XXX TODO XXX: Function call expression arguments
-          abort_expected(ctx, "STOP RIGHT THERE CRIMINAL SCUM");
-        }
-        return expr;
+        auto call_expr = make_unique<ast::expression_call>();
+        call_expr->name_path = std::move(*name_path);
+        call_expr->arguments = parse_argument_list(ctx);
+        expect_token(ctx, TOKEN_RPAREN);
+        return call_expr;
       }
     }
-    // <lvalue>
     ctx.lexer.restore(st);
-    auto lvalue = parse_lvalue(ctx);
+    // <lvalue>
+    auto lvalue = parse_lvalue_ref(ctx);
     if(lvalue) {
       return make_unique<ast::expression_lvalue>(std::move(lvalue));
     }
@@ -453,7 +494,7 @@ namespace parse {
     if(stmt) {
       return stmt;
     }
-    abort_expected(ctx, "block (e.g. { })");
+    abort_expected(ctx, "block (e.g. `{ ... }`)");
   }
 
   // Tries to parse the rule: <else-body>
@@ -467,7 +508,7 @@ namespace parse {
       if(block) {
         return block;
       }
-      abort_expected(ctx, "else block (e.g. `else if(...) { ... }` or `else { ... }`)");
+      abort_expected(ctx, "else statement (e.g. `else if(...) { ... }` or `else { ... }`)");
     }
     return nullptr;
   }
@@ -488,14 +529,47 @@ namespace parse {
 
   // Tries to parse the rule: <function-call>
   unique_ptr<ast::statement> parse_call_statement(context & ctx) {
-    // TODO:
+    // <name->path> [ '(' [ <arguments> ] ')' ]
+    auto st = ctx.lexer.save();
+    auto name_path = parse_name_path(ctx);
+    if(name_path) {
+      if(parse_token(ctx, TOKEN_LPAREN)) {
+        auto call_stmt = make_unique<ast::statement_call>();
+        call_stmt->name_path = std::move(*name_path);
+        call_stmt->arguments = parse_argument_list(ctx);
+        expect_token(ctx, TOKEN_RPAREN);
+        expect_token(ctx, TOKEN_SEMICOLON);
+        return call_stmt;
+      }
+    }
+    ctx.lexer.restore(st);
     return nullptr;
   }
 
   // Tries to parse the rule: <assignment>
   unique_ptr<ast::statement> parse_assignment(context & ctx) {
-    // TODO:
-    return nullptr;
+    auto stmt = make_unique<ast::statement_assignment>();
+    auto lvalue = parse_lvalue(ctx);
+    // Assignment has at least one lvalue
+    if(!lvalue) {
+      return nullptr;
+    }
+    stmt->lvalues.emplace_back(std::move(lvalue));
+    // Keep reading lvalues if given
+    while(parse_token(ctx, TOKEN_COMMA)) {
+      stmt->lvalues.emplace_back(expect_lvalue(ctx));
+    }
+    // True assignment requires an equals sign, but local variable declarations need not have one
+    if(parse_token(ctx, TOKEN_EQUALS)) {
+      // At least one rvalue expected
+      stmt->expressions.emplace_back(expect_expression(ctx));
+      // Keep reading expressions if given
+      while(parse_token(ctx, TOKEN_COMMA)) {
+        stmt->expressions.emplace_back(expect_expression(ctx));
+      }
+    }
+    expect_token(ctx, TOKEN_SEMICOLON);
+    return stmt;
   }
 
   // Expects to parse the rule: <module-item>
@@ -606,12 +680,12 @@ namespace parse {
   unique_ptr<ast::file_item> parse_struct(context & ctx) {
     if(parse_token(ctx, TOKEN_STRUCT)) {
       // Must have name path
-      auto name = expect_name_path(ctx);
+      auto name_path = expect_name_path(ctx);
 
       if(parse_token(ctx, TOKEN_LCURLY)) {
         // Definition
         auto def = make_unique<ast::struct_definition>();
-        def->name = name;
+        def->name_path = name_path;
         while(!parse_token(ctx, TOKEN_RCURLY)) {
           // TODO: Actually read fields
           ctx.lexer.read();
@@ -620,7 +694,7 @@ namespace parse {
       } else {
         // Declaration
         auto decl = make_unique<ast::struct_declaration>();
-        decl->name = name;
+        decl->name_path = name_path;
         // Must have semicolon
         expect_token(ctx, TOKEN_SEMICOLON);
         return decl;
@@ -635,7 +709,7 @@ namespace parse {
       // Create module enclosure
       auto enc = make_unique<ast::module_enclosure>();
       // Read name path
-      enc->name = expect_name_path(ctx);
+      enc->name_path = expect_name_path(ctx);
       // Must have lcurly
       expect_token(ctx, TOKEN_LCURLY);
       // Read module items until rcurly

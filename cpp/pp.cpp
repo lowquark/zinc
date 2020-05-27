@@ -205,7 +205,7 @@ namespace pp {
     if(ts.const_qualified) {
       s = s + "const ";
     }
-    s = s + str(*ts.name_path);
+    s = s + str(ts.name_path);
     if(ts.reference_qualified) {
       s = s + " &";
     }
@@ -218,11 +218,11 @@ namespace pp {
         : os(os), indent(tabs(level)), level(level) { }
 
       virtual void visit(const ast::lvalue_referential & lvalue) const override {
-        os << indent << "LVALUE " << lvalue.name << std::endl;
+        os << indent << "REFERENCE " << lvalue.name << std::endl;
       }
 
       virtual void visit(const ast::lvalue_declarational & lvalue) const override {
-        os << indent << "LVALUE " << str(lvalue.type) << " " << lvalue.name << std::endl;
+        os << indent << "DECLARE " << str(*lvalue.type) << " " << lvalue.name << std::endl;
       }
 
     private:
@@ -316,11 +316,10 @@ namespace pp {
       }
 
       virtual void visit(const ast::expression_lvalue & expr) const override {
-        os << indent << "LVALUE" << std::endl;
-        write(os, *expr.lvalue, level + 1);
+        write(os, *expr.lvalue, level);
       }
       virtual void visit(const ast::expression_call & expr) const override {
-        os << indent << "CALL" << std::endl;
+        os << indent << "CALL " << str(expr.name_path) << std::endl;
         for(auto & expr : expr.arguments) {
           write(os, *expr, level + 1);
         }
@@ -359,7 +358,7 @@ namespace pp {
       }
 
       virtual void visit(const ast::statement_call & stmt) const override {
-        os << indent << "CALL " << str(stmt.name) << std::endl;
+        os << indent << "CALL " << str(stmt.name_path) << std::endl;
         for(auto & expr : stmt.arguments) {
           write(os, *expr, level + 1);
         }
@@ -397,7 +396,7 @@ namespace pp {
         : os(os), indent(tabs(level)), level(level) { }
 
       virtual void visit(const ast::member_declaration & decl) const override {
-        os << indent << "MEMBER " << str(decl.type) << " " << decl.name << std::endl;
+        os << indent << "MEMBER " << str(*decl.type) << " " << decl.name << std::endl;
       }
 
       virtual void visit(const ast::function_declaration & decl) const override {
@@ -421,18 +420,18 @@ namespace pp {
         : os(os) { }
 
       virtual void visit(const ast::module_enclosure & enc) const override {
-        os << "MODULE " << str(enc.name) << std::endl;
+        os << "MODULE " << str(enc.name_path) << std::endl;
         for(auto & item : enc.items) {
           write(os, *item, 1);
         }
       }
 
       virtual void visit(const ast::struct_declaration & decl) const override {
-        os << "STRUCT-DECL " << str(decl.name) << std::endl;
+        os << "STRUCT-DECL " << str(decl.name_path) << std::endl;
       }
 
       virtual void visit(const ast::struct_definition & def) const override {
-        os << "STRUCT-DEF " << str(def.name) << std::endl;
+        os << "STRUCT-DEF " << str(def.name_path) << std::endl;
       }
 
     private:

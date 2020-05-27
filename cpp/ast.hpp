@@ -50,7 +50,7 @@ namespace ast {
   struct type_specifier {
     bool const_qualified;
     bool reference_qualified;
-    unique_ptr<ast::name_path> name_path;
+    ast::name_path name_path;
   };
 
   // -----------------------------------------------------------------------------------------------
@@ -71,7 +71,7 @@ namespace ast {
 
   struct lvalue_declarational : public lvalue {
     lvalue_declarational() : lvalue(DECLARATIONAL) { }
-    type_specifier type;
+    unique_ptr<type_specifier> type;
     string name;
   };
 
@@ -247,7 +247,7 @@ namespace ast {
   struct expression_call : public expression {
     expression_call() : expression(CALL) { }
 
-    unique_ptr<ast::name_path> name_path;
+    ast::name_path name_path;
     expression_list arguments;
   };
 
@@ -314,7 +314,7 @@ namespace ast {
   struct statement_call : public statement {
     statement_call() : statement(CALL) { }
 
-    name_path name;
+    ast::name_path name_path;
     expression_list arguments;
   };
 
@@ -375,7 +375,7 @@ namespace ast {
   struct member_declaration : public module_item {
     member_declaration() : module_item(MEMBER_DECLARATION) { }
 
-    type_specifier type;
+    unique_ptr<type_specifier> type;
     string name;
   };
 
@@ -425,18 +425,18 @@ namespace ast {
   struct module_enclosure : public file_item {
     module_enclosure() : file_item(MODULE_ENCLOSURE) { }
 
-    name_path name;
+    ast::name_path name_path;
     module_item_list items;
   };
 
   struct struct_declaration : public file_item {
     struct_declaration() : file_item(STRUCT_DECLARATION) { }
-    name_path name;
+    ast::name_path name_path;
   };
 
   struct struct_definition : public file_item {
     struct_definition() : file_item(STRUCT_DEFINITION) { }
-    name_path name;
+    ast::name_path name_path;
   };
 
   class file_item_visitor {

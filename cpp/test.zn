@@ -2,11 +2,13 @@
 module a:b {
   function bla2 () -> ();
 
-  function bla (const int64 & a) -> () {
-    if(1) {
+  function bla (int64 a) -> () {
+    int a, int b, int c = 5, foo();
+    if(t) {
       return -(5 + 5) || 1 * (30 / ~67 && 4 + bla);
     } else if(1) {
-      return;
+      bla2(5, 5, 5, 6, 6, 6 + 6);
+      return bla2(5, 5, 5, 6, 6, 6 + 6);
     } else {
       return;
     }
